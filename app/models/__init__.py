@@ -10,6 +10,7 @@ from app.models.enums import (
     OcrFieldName,
     CertCategory,
 )
+from app.models.user import User
 from app.models.project import Project
 from app.models.document import TenderDocument, BidDocument, DocumentImage
 from app.models.ocr import OcrExtraction
@@ -27,6 +28,7 @@ __all__ = [
     "OcrStatus",
     "OcrFieldName",
     "CertCategory",
+    "User",
     "Project",
     "TenderDocument",
     "BidDocument",

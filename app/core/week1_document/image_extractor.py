@@ -1,9 +1,10 @@
 """Image Extractor: PDF image extraction with MD5 deduplication using PyMuPDF."""
 import fitz
 import hashlib
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Optional
 
 
 @dataclass
@@ -63,3 +64,33 @@ class ImageExtractor:
             doc.close()
 
         return results
+
+    def classify_image_type(self, image_bytes: bytes) -> str:
+        """Classify the type of image based on its bytes.
+
+        This is a simple classification based on image dimensions and format.
+        In production, this could use more sophisticated methods like
+        running OCR or ML-based classification.
+
+        Args:
+            image_bytes: Raw image bytes.
+
+        Returns:
+            Image type string ('business_license', 'certification', 'other').
+        """
+        # Default classification based on common dimensions for business documents
+        # This is a placeholder - actual implementation would use OCR or ML
+        try:
+            from PIL import Image
+            import io
+            img = Image.open(io.BytesIO(image_bytes))
+            width, height = img.size
+
+            # Business licenses and certs are typically landscape A4-ish (width > height)
+            if width > height and width > 800:
+                return 'business_license'
+            elif width > height and width > 400:
+                return 'certification'
+            return 'other'
+        except Exception:
+            return 'other'
