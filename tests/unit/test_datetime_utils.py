@@ -25,7 +25,8 @@ def test_ocr_zero_to_o():
     assert parse_ocr_date('2025O年3月15日') == date(2025, 3, 15)
 
 def test_ocr_8_to_b():
-    assert parse_ocr_date('2025年3月B日') == date(2025, 3, 15)
+    # OCR might misread '8' as 'B', so B → 8
+    assert parse_ocr_date('2025年3月B日') == date(2025, 3, 8)
 
 def test_permanent_returns_2099():
     assert parse_ocr_date('长期') == date(2099, 12, 31)

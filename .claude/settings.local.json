@@ -19,7 +19,11 @@
       "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/week1/test_cert_matcher.py -v 2>&1)",
       "Bash(cd \"D:\\\\tis_project\" && python -c \"\nimport json\nimport sys\nsys.path.insert\\(0, '.'\\)\nfrom scripts.seed_standard_certs import SEED_DATA\nprint\\('SEED_DATA aliases:', SEED_DATA[0]['aliases']\\)\nprint\\('JSON dumps:', json.dumps\\(SEED_DATA[0]['aliases']\\)\\)\n\")",
       "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/week1/ -v 2>&1)",
-      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/unit/test_config.py tests/unit/test_migrations.py -v 2>&1)"
+      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/unit/test_config.py tests/unit/test_migrations.py -v 2>&1)",
+      "Bash(cd \"D:/tis_project\" && pytest tests/unit/test_datetime_utils.py -v 2>&1)",
+      "Bash(cd \"D:/tis_project\" && pytest tests/unit/test_text_utils.py -v 2>&1)",
+      "Bash(cd \"D:/tis_project\" && pytest tests/unit/test_datetime_utils.py tests/unit/test_text_utils.py -v 2>&1)",
+      "Bash(cd D:/tis_project && pytest tests/unit/ -v)"
     ]
   }
 }
