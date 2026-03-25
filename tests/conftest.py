@@ -3,6 +3,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 import json
+from datetime import datetime, timedelta
 
 
 # Test database URL (SQLite for testing)
@@ -234,3 +235,168 @@ def check_tables_exist():
         return results
 
     return _check_tables
+
+
+@pytest.fixture
+def db_session(session):
+    """Alias for session to match test naming convention."""
+    return session
+
+
+@pytest.fixture
+def seed_project_with_tender(session):
+    """Create a project with id=1 and tender document with qualification requirements."""
+    from datetime import datetime, timedelta
+
+    # Create user first
+    session.execute(text("""
+        INSERT INTO users (id, username, email) VALUES (1, 'testuser', 'test@test.com')
+    """))
+
+    # Create project with bid_open_date = today + 30 days
+    bid_date = datetime.now() + timedelta(days=30)
+    session.execute(text("""
+        INSERT INTO projects (id, project_name, project_type, bid_open_date, status, created_by)
+        VALUES (1, 'Test Project', 'food', :bid_date, 'uploaded', 1)
+    """), {"bid_date": bid_date})
+
+    # Create tender document with qualification requirements
+    # FOOD-BUSINESS-LICENSE is mandatory, ISO-9001-2015 is optional
+    tender_data = json.dumps({
+        'qualification_requirements': [
+            {'cert_code': 'FOOD-BUSINESS-LICENSE', 'is_mandatory': True},
+            {'cert_code': 'ISO-9001-2015', 'is_mandatory': False},
+        ]
+    })
+    session.execute(text("""
+        INSERT INTO tender_documents (project_id, parsing_status, extracted_data, parsed_by_ai, confirmed_by_human)
+        VALUES (1, 'completed', :data, 1, 1)
+    """), {"data": tender_data})
+
+    # Create bid document and image for OCR extractions
+    session.execute(text("""
+        INSERT INTO bid_documents (id, project_id, doc_type) VALUES (1, 1, 'qualification')
+    """))
+    session.execute(text("""
+        INSERT INTO document_images (id, document_id, project_id, image_type, ocr_status)
+        VALUES (1, 1, 1, 'certification', 'success')
+    """))
+
+    session.commit()
+    return session
+
+
+@pytest.fixture
+def seed_standard_certs(seed_project_with_tender):
+    """Seed FOOD-BUSINESS-LICENSE and ISO-9001 certs for week 2 tests."""
+    session = seed_project_with_tender
+
+    certs = [
+        {
+            'cert_code': 'FOOD-BUSINESS-LICENSE',
+            'cert_full_name': '食品经营许可证',
+            'required_keywords': json.dumps(['食品经营', '许可证']),
+            'exclude_keywords': json.dumps(['生产', '小作坊']),
+            'is_active': 1
+        },
+        {
+            'cert_code': 'ISO-9001-2015',
+            'cert_full_name': '质量管理体系认证',
+            'required_keywords': json.dumps(['质量管理体系', '认证']),
+            'exclude_keywords': json.dumps([]),
+            'is_active': 1
+        },
+    ]
+
+    for cert_data in certs:
+        session.execute(text("""
+            INSERT INTO standard_certifications (cert_code, cert_full_name, required_keywords, exclude_keywords, is_active)
+            VALUES (:cert_code, :cert_full_name, :required_keywords, :exclude_keywords, :is_active)
+        """), cert_data)
+
+    session.commit()
+    return session
+
+
+@pytest.fixture
+def seed_expired_cert(seed_standard_certs):
+    """Add OCR extraction for FOOD-BUSINESS-LICENSE that expired 1 day before bid open."""
+    session = seed_standard_certs
+
+    # Get the cert id
+    row = session.execute(
+        text("SELECT id FROM standard_certifications WHERE cert_code = 'FOOD-BUSINESS-LICENSE'")
+    ).fetchone()
+    cert_id = row[0]
+
+    # Get bid_open_date and calculate expired date
+    row = session.execute(
+        text("SELECT bid_open_date FROM projects WHERE id = 1")
+    ).fetchone()
+    bid_date = datetime.fromisoformat(row[0]) if isinstance(row[0], str) else row[0].replace(tzinfo=None)
+    expired_date = bid_date - timedelta(days=1)
+
+    session.execute(text("""
+        INSERT INTO ocr_extractions (image_id, project_id, field_name, field_value, normalized_value, standard_cert_id, is_validated)
+        VALUES (1, 1, 'valid_until', :expired_date, :expired_date, :cert_id, 1)
+    """), {"expired_date": expired_date.strftime('%Y-%m-%d'), "cert_id": cert_id})
+
+    session.commit()
+    return session
+
+
+@pytest.fixture
+def seed_wrong_cert_with_exclude(seed_standard_certs):
+    """Add OCR extraction that has cert_id of FOOD-BUSINESS but name contains '生产' (exclude keyword)."""
+    session = seed_standard_certs
+
+    # Get the cert id
+    row = session.execute(
+        text("SELECT id FROM standard_certifications WHERE cert_code = 'FOOD-BUSINESS-LICENSE'")
+    ).fetchone()
+    cert_id = row[0]
+
+    # Insert OCR extraction with wrong cert name containing exclude keyword
+    session.execute(text("""
+        INSERT INTO ocr_extractions (image_id, project_id, field_name, field_value, normalized_value, standard_cert_id, is_validated)
+        VALUES (1, 1, 'cert_name', '食品生产许可证', '食品生产许可证', :cert_id, 1)
+    """), {"cert_id": cert_id})
+
+    session.commit()
+    return session
+
+
+@pytest.fixture
+def seed_all_valid_certs(seed_standard_certs):
+    """Add OCR extraction for all certs that are valid (not expired)."""
+    session = seed_standard_certs
+
+    # Get cert ids
+    food_cert_row = session.execute(
+        text("SELECT id FROM standard_certifications WHERE cert_code = 'FOOD-BUSINESS-LICENSE'")
+    ).fetchone()
+    iso_cert_row = session.execute(
+        text("SELECT id FROM standard_certifications WHERE cert_code = 'ISO-9001-2015'")
+    ).fetchone()
+
+    # Get bid_open_date and calculate valid dates (far future)
+    row = session.execute(
+        text("SELECT bid_open_date FROM projects WHERE id = 1")
+    ).fetchone()
+    bid_date = datetime.fromisoformat(row[0]) if isinstance(row[0], str) else row[0].replace(tzinfo=None)
+    valid_date = bid_date + timedelta(days=365)
+
+    # Insert valid FOOD-BUSINESS-LICENSE
+    if food_cert_row:
+        session.execute(text("""
+            INSERT INTO ocr_extractions (image_id, project_id, field_name, field_value, normalized_value, standard_cert_id, is_validated)
+            VALUES (1, 1, 'cert_name', '食品经营许可证', '食品经营许可证', :cert_id, 1)
+        """), {"cert_id": food_cert_row[0]})
+
+        session.execute(text("""
+            INSERT INTO ocr_extractions (image_id, project_id, field_name, field_value, normalized_value, standard_cert_id, is_validated)
+            VALUES (1, 1, 'valid_until', :valid_date, :valid_date, :cert_id, 1)
+        """), {"valid_date": valid_date.strftime('%Y-%m-%d'), "cert_id": food_cert_row[0]})
+
+    session.commit()
+    return session
