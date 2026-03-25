@@ -8,7 +8,18 @@
       "Bash(cd D:/tis_project && python -m pytest tests/unit/test_migrations.py -v 2>&1)",
       "Bash(cd D:/tis_project && python -m pytest tests/ -v 2>&1)",
       "Bash(cd D:/tis_project && python -c \"\nfrom app.models.base import Base\nfrom app.models.enums import \\(\n    ProjectStatus, GenerationMode, OwnerType, ParsingStatus, DocType,\n    ImageType, OcrStatus, OcrFieldName, CertCategory\n\\)\nfrom app.models.project import Project\nfrom app.models.document import TenderDocument, BidDocument, DocumentImage\nfrom app.models.ocr import OcrExtraction\nfrom app.models.standard import StandardCertification\nprint\\('All models imported successfully!'\\)\nprint\\(f'Project table name: {Project.__tablename__}'\\)\nprint\\(f'StandardCertification table name: {StandardCertification.__tablename__}'\\)\n\")",
-      "Bash(cd D:/tis_project && python -c \"\nfrom alembic.config import Config as AlembicConfig\ncfg = AlembicConfig\\('alembic.ini'\\)\nprint\\(f'alembic script_location: {cfg.get_main_option\\(\\\\\"script_location\\\\\"\\)}'\\)\nprint\\(f'alembic sqlalchemy.url: {cfg.get_main_option\\(\\\\\"sqlalchemy.url\\\\\"\\)}'\\)\nprint\\('Alembic config loaded successfully!'\\)\n\")"
+      "Bash(cd D:/tis_project && python -c \"\nfrom alembic.config import Config as AlembicConfig\ncfg = AlembicConfig\\('alembic.ini'\\)\nprint\\(f'alembic script_location: {cfg.get_main_option\\(\\\\\"script_location\\\\\"\\)}'\\)\nprint\\(f'alembic sqlalchemy.url: {cfg.get_main_option\\(\\\\\"sqlalchemy.url\\\\\"\\)}'\\)\nprint\\('Alembic config loaded successfully!'\\)\n\")",
+      "Bash(ls -la \"D:\\\\tis_project\\\\tests\" 2>/dev/null || dir \"D:\\\\tis_project\\\\tests\")",
+      "Bash(ls -la \"D:\\\\tis_project\\\\app\\\\core\" 2>/dev/null || dir \"D:\\\\tis_project\\\\app\\\\core\")",
+      "Bash(ls -la \"D:\\\\tis_project\\\\tests\\\\week1\" 2>/dev/null || dir \"D:\\\\tis_project\\\\tests\\\\week1\")",
+      "Bash(ls -la \"D:\\\\tis_project\\\\app\\\\core\\\\week1_document\" 2>/dev/null || dir \"D:\\\\tis_project\\\\app\\\\core\\\\week1_document\")",
+      "Bash(ls -la \"D:\\\\tis_project\\\\tests\\\\fixtures\" 2>/dev/null || dir \"D:\\\\tis_project\\\\tests\\\\fixtures\")",
+      "Bash(ls -la \"D:\\\\tis_project\\\\scripts\" 2>/dev/null || dir \"D:\\\\tis_project\\\\scripts\")",
+      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/week1/test_standard_certs.py -v 2>&1)",
+      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/week1/test_cert_matcher.py -v 2>&1)",
+      "Bash(cd \"D:\\\\tis_project\" && python -c \"\nimport json\nimport sys\nsys.path.insert\\(0, '.'\\)\nfrom scripts.seed_standard_certs import SEED_DATA\nprint\\('SEED_DATA aliases:', SEED_DATA[0]['aliases']\\)\nprint\\('JSON dumps:', json.dumps\\(SEED_DATA[0]['aliases']\\)\\)\n\")",
+      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/week1/ -v 2>&1)",
+      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/unit/test_config.py tests/unit/test_migrations.py -v 2>&1)"
     ]
   }
 }
