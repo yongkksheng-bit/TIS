@@ -41,7 +41,13 @@
       "Bash(python -m pytest tests/week1/test_api_projects.py tests/week1/test_api_documents.py -v 2>&1 | head -60)",
       "Bash(cd /d D:\\\\tis_project && python -m pytest tests/week1/test_api_projects.py tests/week1/test_api_documents.py -v 2>&1)",
       "Bash(python -m pytest D:/tis_project/tests/week1/test_api_projects.py D:/tis_project/tests/week1/test_api_documents.py -v 2>&1)",
-      "Bash(python -m pytest D:/tis_project/tests/week1/ -v --ignore=D:/tis_project/tests/week1/test_api_projects.py --ignore=D:/tis_project/tests/week1/test_api_documents.py 2>&1 | tail -30)"
+      "Bash(python -m pytest D:/tis_project/tests/week1/ -v --ignore=D:/tis_project/tests/week1/test_api_projects.py --ignore=D:/tis_project/tests/week1/test_api_documents.py 2>&1 | tail -30)",
+      "Bash(chmod +x \"D:\\\\tis_project\\\\docker\\\\entrypoint.sh\")",
+      "Bash(cd \"D:\\\\tis_project\" && docker-compose up -d --build)",
+      "Bash(docker version:*)",
+      "Bash(docker info:*)",
+      "Bash(cd \"D:\\\\tis_project\" && docker-compose config 2>&1 || echo \"Config validation failed\")",
+      "Bash(cd D:/tis_project && docker-compose config)"
     ]
   }
 }
