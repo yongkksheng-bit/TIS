@@ -37,7 +37,11 @@
       "Bash(python -m pytest tests/week1/test_parser.py -v 2>&1)",
       "Bash(python -m pytest tests/week1/test_parser.py tests/week1/test_confirmation_service.py -v 2>&1)",
       "Bash(python -m pytest tests/week1/ -v 2>&1 | head -60)",
-      "Bash(python -m pytest tests/week1/ -v 2>&1 | tail -20)"
+      "Bash(python -m pytest tests/week1/ -v 2>&1 | tail -20)",
+      "Bash(python -m pytest tests/week1/test_api_projects.py tests/week1/test_api_documents.py -v 2>&1 | head -60)",
+      "Bash(cd /d D:\\\\tis_project && python -m pytest tests/week1/test_api_projects.py tests/week1/test_api_documents.py -v 2>&1)",
+      "Bash(python -m pytest D:/tis_project/tests/week1/test_api_projects.py D:/tis_project/tests/week1/test_api_documents.py -v 2>&1)",
+      "Bash(python -m pytest D:/tis_project/tests/week1/ -v --ignore=D:/tis_project/tests/week1/test_api_projects.py --ignore=D:/tis_project/tests/week1/test_api_documents.py 2>&1 | tail -30)"
     ]
   }
 }
