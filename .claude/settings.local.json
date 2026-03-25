@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(cd \"D:\\\\tis_project\" && pytest tests/unit/test_config.py -v 2>&1)",
-      "Bash(git init:*)"
+      "Bash(git init:*)",
+      "Bash(cd D:/tis_project && python -c \"import alembic; print\\('alembic ok'\\)\" 2>&1 || echo \"alembic not installed\")",
+      "Bash(cd D:/tis_project && python -m pytest tests/unit/test_migrations.py -v 2>&1 | head -100)",
+      "Bash(cd D:/tis_project && python -m pytest tests/unit/test_migrations.py -v 2>&1)",
+      "Bash(cd D:/tis_project && python -m pytest tests/ -v 2>&1)",
+      "Bash(cd D:/tis_project && python -c \"\nfrom app.models.base import Base\nfrom app.models.enums import \\(\n    ProjectStatus, GenerationMode, OwnerType, ParsingStatus, DocType,\n    ImageType, OcrStatus, OcrFieldName, CertCategory\n\\)\nfrom app.models.project import Project\nfrom app.models.document import TenderDocument, BidDocument, DocumentImage\nfrom app.models.ocr import OcrExtraction\nfrom app.models.standard import StandardCertification\nprint\\('All models imported successfully!'\\)\nprint\\(f'Project table name: {Project.__tablename__}'\\)\nprint\\(f'StandardCertification table name: {StandardCertification.__tablename__}'\\)\n\")",
+      "Bash(cd D:/tis_project && python -c \"\nfrom alembic.config import Config as AlembicConfig\ncfg = AlembicConfig\\('alembic.ini'\\)\nprint\\(f'alembic script_location: {cfg.get_main_option\\(\\\\\"script_location\\\\\"\\)}'\\)\nprint\\(f'alembic sqlalchemy.url: {cfg.get_main_option\\(\\\\\"sqlalchemy.url\\\\\"\\)}'\\)\nprint\\('Alembic config loaded successfully!'\\)\n\")"
     ]
   }
 }
