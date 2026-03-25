@@ -23,7 +23,8 @@
       "Bash(cd \"D:/tis_project\" && pytest tests/unit/test_datetime_utils.py -v 2>&1)",
       "Bash(cd \"D:/tis_project\" && pytest tests/unit/test_text_utils.py -v 2>&1)",
       "Bash(cd \"D:/tis_project\" && pytest tests/unit/test_datetime_utils.py tests/unit/test_text_utils.py -v 2>&1)",
-      "Bash(cd D:/tis_project && pytest tests/unit/ -v)"
+      "Bash(cd D:/tis_project && pytest tests/unit/ -v)",
+      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/week1/test_image_extractor.py tests/week1/test_ocr_engine.py -v 2>&1)"
     ]
   }
 }
