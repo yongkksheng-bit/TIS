@@ -9,12 +9,22 @@ from app.models.enums import (
     OcrStatus,
     OcrFieldName,
     CertCategory,
+    TimeUrgencyLevel,
+    RiskLevel,
+    Recommendation,
+    ApprovalAction,
+    RelationshipLevel,
+    CostConfidence,
 )
 from app.models.user import User
 from app.models.project import Project
 from app.models.document import TenderDocument, BidDocument, DocumentImage
 from app.models.ocr import OcrExtraction
 from app.models.standard import StandardCertification
+from app.models.owner import OwnerProfile
+from app.models.evaluation import BidEvaluationReport
+from app.models.approval import ApprovalLog
+from app.models.discarded import DiscardedProject
 
 __all__ = [
     "Base",
@@ -28,6 +38,12 @@ __all__ = [
     "OcrStatus",
     "OcrFieldName",
     "CertCategory",
+    "TimeUrgencyLevel",
+    "RiskLevel",
+    "Recommendation",
+    "ApprovalAction",
+    "RelationshipLevel",
+    "CostConfidence",
     "User",
     "Project",
     "TenderDocument",
@@ -35,4 +51,8 @@ __all__ = [
     "DocumentImage",
     "OcrExtraction",
     "StandardCertification",
+    "OwnerProfile",
+    "BidEvaluationReport",
+    "ApprovalLog",
+    "DiscardedProject",
 ]

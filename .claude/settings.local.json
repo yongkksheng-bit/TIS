@@ -48,7 +48,12 @@
       "Bash(docker info:*)",
       "Bash(cd \"D:\\\\tis_project\" && docker-compose config 2>&1 || echo \"Config validation failed\")",
       "Bash(cd D:/tis_project && docker-compose config)",
-      "Bash(cd D:/tis_project && pytest tests/week1/ tests/unit/ -v --tb=no -q 2>&1 | tail -20)"
+      "Bash(cd D:/tis_project && pytest tests/week1/ tests/unit/ -v --tb=no -q 2>&1 | tail -20)",
+      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/week2/test_week2_migrations.py -v 2>&1)",
+      "Bash(cd \"D:\\\\tis_project\" && python -c \"from app.models.enums import TimeUrgencyLevel, RiskLevel, Recommendation, ApprovalAction; print\\('Enums OK'\\)\" 2>&1)",
+      "Bash(cd \"D:\\\\tis_project\" && python -c \"from app.models import *; print\\('All models imported successfully'\\); print\\('New models:', OwnerProfile, BidEvaluationReport, ApprovalLog, DiscardedProject\\)\" 2>&1)",
+      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/unit/test_migrations.py -v 2>&1)",
+      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/ -v --ignore=tests/week1 2>&1)"
     ]
   }
 }

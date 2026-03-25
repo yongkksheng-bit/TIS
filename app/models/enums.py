@@ -80,3 +80,39 @@ class CertCategory(str, enum.Enum):
     CONSTRUCTION = "construction"
     ISO = "iso"
     PERSONNEL = "personnel"
+
+
+class TimeUrgencyLevel(str, enum.Enum):
+    EXPIRED = "expired"    # < 0 days
+    URGENT = "urgent"      # 1-3 days
+    TIGHT = "tight"        # 4-7 days
+    NORMAL = "normal"      # 8-15 days
+    RELAXED = "relaxed"    # > 15 days
+
+class RiskLevel(str, enum.Enum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+class Recommendation(str, enum.Enum):
+    WORTH_BIDDING = "worth_bidding"
+    ABANDON = "abandon"
+    CONDITIONAL = "conditional"
+
+class ApprovalAction(str, enum.Enum):
+    SPECIALIST_WORTHY = "specialist_worthy"
+    SPECIALIST_UNWORTHY = "specialist_unworthy"
+    BOSS_OVERRIDE_TERMINATE = "boss_override_terminate"
+    BOSS_OVERRIDE_REVIVE = "boss_override_revive"
+    BOSS_CONFIRM_SPECIALIST = "boss_confirm_specialist"
+
+class RelationshipLevel(str, enum.Enum):
+    NONE = "none"
+    WEAK = "weak"
+    MEDIUM = "medium"
+    STRONG = "strong"
+
+class CostConfidence(str, enum.Enum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
