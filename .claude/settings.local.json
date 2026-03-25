@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"D:\\\\tis_project\" && pytest tests/unit/test_config.py -v 2>&1)",
+      "Bash(git init:*)"
+    ]
+  }
+}
