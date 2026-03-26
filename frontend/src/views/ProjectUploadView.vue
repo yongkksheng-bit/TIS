@@ -59,15 +59,19 @@
         <el-progress :percentage="parsingProgress" :stroke-width="8" class="mt-3" />
       </el-card>
     </div>
+
+    <!-- Rebid Alert Dialog -->
+    <RebidAlertDialog v-model="showRebidAlert" :alert-data="rebidAlertData" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useProjectStore } from '@/stores/projectStore'
 import { DocumentAdd, Cpu, Loading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import RebidAlertDialog, { type RebidAlertData } from '@/components/RebidAlertDialog.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -77,6 +81,18 @@ const selectedFile = ref<File | null>(null)
 const isParsing = ref(false)
 const parsingProgress = ref(0)
 const isDragover = ref(false)
+const showRebidAlert = ref(false)
+const rebidAlertData = ref<RebidAlertData>({
+  historicalProject: 'XX学校2025年食堂配送项目',
+  historicalOutcome: '废标（形式审查：授权书签字缺失）',
+  timeDiff: '6 个月前',
+  warnings: ['历史废标原因：授权书第5页缺少法定代表人签字', '建议本次形式审查重点检查签字完整性'],
+  revivableDraft: {
+    id: 1,
+    description: '技术标草稿（2025-10-15 生成）',
+    reusability: '85%',
+  },
+})
 
 function handleFileChange(file: unknown) {
   const f = (file as { raw: File }).raw
@@ -111,6 +127,13 @@ function startParsing() {
 function goBack() {
   router.push('/')
 }
+
+onMounted(() => {
+  // Auto-show rebid alert for demo purposes
+  setTimeout(() => {
+    showRebidAlert.value = true
+  }, 500)
+})
 </script>
 
 <style scoped>
