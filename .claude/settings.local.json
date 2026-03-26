@@ -53,7 +53,18 @@
       "Bash(cd \"D:\\\\tis_project\" && python -c \"from app.models.enums import TimeUrgencyLevel, RiskLevel, Recommendation, ApprovalAction; print\\('Enums OK'\\)\" 2>&1)",
       "Bash(cd \"D:\\\\tis_project\" && python -c \"from app.models import *; print\\('All models imported successfully'\\); print\\('New models:', OwnerProfile, BidEvaluationReport, ApprovalLog, DiscardedProject\\)\" 2>&1)",
       "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/unit/test_migrations.py -v 2>&1)",
-      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/ -v --ignore=tests/week1 2>&1)"
+      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/ -v --ignore=tests/week1 2>&1)",
+      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/week2/test_exact_matcher.py -v 2>&1 | head -100)",
+      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/week2/test_exact_matcher.py -v 2>&1 | head -80)",
+      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/ -v --tb=short 2>&1 | tail -50)",
+      "Bash(cd \"D:\\\\tis_project\" && python -m pytest tests/week2/test_exact_matcher.py -v 2>&1)",
+      "Bash(cd \"D:/tis_project\" && pytest tests/week2/test_time_evaluator.py -v 2>&1 | head -50)",
+      "Bash(cd \"D:/tis_project\" && pytest tests/week2/test_time_evaluator.py tests/week2/test_win_probability.py -v)",
+      "Bash(python -m pytest tests/week2/test_time_evaluator.py tests/week2/test_win_probability.py -v)",
+      "Bash(git add:*)",
+      "Bash(cd /d tis_project && python -m pytest tests/week2/test_owner_service.py tests/week2/test_cost_estimator.py -v 2>&1)",
+      "Bash(cd D:/tis_project && python -m pytest tests/week2/test_owner_service.py tests/week2/test_cost_estimator.py -v 2>&1)",
+      "Bash(cd D:/tis_project && python -m pytest tests/week2/test_evaluation_engine.py -v 2>&1)"
     ]
   }
 }
