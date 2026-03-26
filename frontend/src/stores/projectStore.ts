@@ -13,6 +13,7 @@ export interface Project {
   generation_mode: string
   bid_open_date: string
   pdf_file?: string
+  boss_insider_notes?: string
   created_at?: string
 }
 
