@@ -20,4 +20,20 @@ const mockClient = {
   },
 }
 
+export function setupUploadMock() {
+  // Intercept upload requests
+  const origPost = mockClient.post.bind(mockClient)
+  mockClient.post = async (url: string, data?: unknown) => {
+    if (url.includes('/upload')) {
+      console.log('[MOCK] PDF upload intercepted', url)
+      await new Promise(r => setTimeout(r, 100))
+      return { data: { success: true, project_id: Date.now() } }
+    }
+    return origPost(url, data)
+  }
+}
+
+// Initialize mock intercepts
+setupUploadMock()
+
 export { mockClient as mockClient }

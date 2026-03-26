@@ -12,6 +12,7 @@ export interface Project {
   relationship_flag: boolean
   generation_mode: string
   bid_open_date: string
+  pdf_file?: string
   created_at?: string
 }
 
