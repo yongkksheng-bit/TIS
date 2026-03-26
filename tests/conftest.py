@@ -186,6 +186,38 @@ def engine():
                 CHECK (relationship_index BETWEEN 0 AND 100)
             )
         """))
+        # Create approval_logs table
+        conn.execute(text("""
+            CREATE TABLE approval_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL REFERENCES projects(id),
+                action_type VARCHAR(50) NOT NULL,
+                actor_role VARCHAR(50) NOT NULL,
+                actor_id INTEGER REFERENCES users(id),
+                reason_text TEXT,
+                original_status VARCHAR(50),
+                new_status VARCHAR(50),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
+        # Create discarded_projects table
+        conn.execute(text("""
+            CREATE TABLE discarded_projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL REFERENCES projects(id),
+                original_evaluation_report_id INTEGER REFERENCES bid_evaluation_reports(id),
+                discarded_by VARCHAR(50) NOT NULL,
+                discard_reason TEXT,
+                discard_stage VARCHAR(50),
+                can_be_revived INTEGER DEFAULT 1,
+                revived_at TIMESTAMP,
+                revived_by INTEGER REFERENCES users(id),
+                revived_to_project_id INTEGER REFERENCES projects(id),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
         conn.commit()
     yield engine
 
