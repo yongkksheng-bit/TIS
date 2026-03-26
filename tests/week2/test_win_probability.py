@@ -13,11 +13,11 @@ def test_expired_time_returns_zero():
     result = calc.calculate(qual_score=80, time_level='expired', relationship_index=50, competition_count=1)
     assert result == 0.0
 
-def test_qual_score_60_is_fatal():
-    """qual_score = 60 is still fatal (< 60 threshold)."""
+def test_qual_score_60_not_fatal():
+    """qual_score = 60 is NOT fatal (threshold is < 60 per Master Spec §8.2)."""
     calc = WinProbabilityCalculator()
     result = calc.calculate(qual_score=60, time_level='urgent', relationship_index=80, competition_count=1)
-    assert result == 0.0
+    assert result > 0.0  # 60 is NOT fatal, should compute normally
 
 def test_normal_scenario_returns_valid_probability():
     """Normal scenario returns weighted probability in range [0, 1]."""

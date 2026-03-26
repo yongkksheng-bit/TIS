@@ -32,8 +32,8 @@ class WinProbabilityCalculator:
         competition_count: int = 1
     ) -> float:
         """Calculate win probability 0-1."""
-        # Fatal risk override - one vote veto (qual_score <= 60 is fatal per test requirement)
-        if qual_score <= 60:
+        # Fatal risk override - one vote veto (qual_score < 60 per Master Spec §8.2)
+        if qual_score < 60:
             return 0.0
         if time_level == 'expired':
             return 0.0
