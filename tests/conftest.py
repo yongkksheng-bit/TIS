@@ -127,6 +127,65 @@ def engine():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
+        # Create owner_profiles table
+        conn.execute(text("""
+            CREATE TABLE owner_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_name VARCHAR(255) NOT NULL,
+                owner_type VARCHAR(50),
+                region VARCHAR(100),
+                cooperation_count INTEGER DEFAULT 0,
+                last_cooperation_date DATE,
+                relationship_level VARCHAR(20) DEFAULT 'none',
+                avg_winning_discount NUMERIC(5, 2),
+                preferred_styles TEXT,
+                common_requirements TEXT,
+                blacklist_flags TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(owner_name, region)
+            )
+        """))
+        # Create bid_evaluation_reports table
+        conn.execute(text("""
+            CREATE TABLE bid_evaluation_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                report_version INTEGER DEFAULT 1,
+                qualification_match_score INTEGER,
+                missing_mandatory_certs TEXT,
+                missing_optional_certs TEXT,
+                matched_certs_detail TEXT,
+                days_until_bid_open INTEGER,
+                time_urgency_level VARCHAR(20),
+                is_time_sufficient INTEGER,
+                owner_profile_id INTEGER REFERENCES owner_profiles(id),
+                relationship_index INTEGER,
+                is_new_owner INTEGER,
+                estimated_cost NUMERIC(15, 2),
+                suggested_price_range_low NUMERIC(15, 2),
+                suggested_price_range_high NUMERIC(15, 2),
+                cost_estimate_confidence VARCHAR(20),
+                overall_win_probability NUMERIC(5, 4),
+                risk_level VARCHAR(20),
+                fatal_risks TEXT,
+                warning_risks TEXT,
+                recommendation VARCHAR(20),
+                recommendation_reason VARCHAR(500),
+                generated_by VARCHAR(50) DEFAULT 'system',
+                confirmed_by_specialist INTEGER DEFAULT 0,
+                specialist_decision VARCHAR(20),
+                specialist_notes VARCHAR(500),
+                confirmed_at TIMESTAMP,
+                overridden_by_boss INTEGER DEFAULT 0,
+                boss_override_reason VARCHAR(500),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(project_id, report_version),
+                CHECK (qualification_match_score BETWEEN 0 AND 100),
+                CHECK (relationship_index BETWEEN 0 AND 100)
+            )
+        """))
         conn.commit()
     yield engine
 
