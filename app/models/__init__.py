@@ -28,6 +28,7 @@ from app.models.discarded import DiscardedProject
 from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.tech_proposal import TechProposalTask, ScoringIndex, GenerationLog
 from app.models.pricing import CostEstimate, PricingDecision, PriceHistory
+from app.models.formal_review import FormalReviewItem, AbandonedDraft, FinalBidDocument
 
 __all__ = [
     "Base",
@@ -65,4 +66,7 @@ __all__ = [
     "CostEstimate",
     "PricingDecision",
     "PriceHistory",
+    "FormalReviewItem",
+    "AbandonedDraft",
+    "FinalBidDocument",
 ]
