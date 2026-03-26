@@ -6,4 +6,5 @@ from app.api.v1.endpoints import (
     rag,
     pricing,
     formal_review,
+    review,
 )

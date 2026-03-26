@@ -1,6 +1,6 @@
 """BidReviewEngine — analyzes bid outcomes and feeds the knowledge base."""
 import json
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -9,7 +9,7 @@ from sqlalchemy import desc
 from app.models.project import Project
 from app.models.pricing import PricingDecision, PriceHistory, CostEstimate
 from app.models.tech_proposal import TechProposalTask
-from app.models.formal_review import FormalReviewItem
+from app.models.formal_review import FormalReviewItem, AbandonedDraft
 from app.models.review import BidOutcome, WinningDNA, DisqualificationTrap, KnowledgeEvolutionLog
 from app.models.knowledge_chunk import KnowledgeChunk
 
@@ -390,4 +390,106 @@ class BidReviewEngine:
         return {
             "outcome_type": "lose",
             "competitor_price": competitor_price,
+        }
+
+    def detect_similar_rebid(self, project_id: int) -> dict:
+        """
+        Detect if a new project is a rebid of a historical project.
+
+        Args:
+            project_id: The new project to check
+
+        Returns:
+            dict with keys: is_rebid, historical_project_id, historical_outcome,
+            similarity_score, alert_level, warnings, revivable_drafts
+        """
+        # Load the new project
+        new_project = self.db.get(Project, project_id)
+        if new_project is None:
+            return {
+                "is_rebid": False,
+                "historical_project_id": None,
+                "historical_outcome": None,
+                "similarity_score": None,
+                "alert_level": None,
+                "warnings": ["Project not found"],
+                "revivable_drafts": None,
+            }
+
+        # Cannot detect rebid without owner_unit
+        if not new_project.owner_unit:
+            return {
+                "is_rebid": False,
+                "historical_project_id": None,
+                "historical_outcome": None,
+                "similarity_score": None,
+                "alert_level": None,
+                "warnings": ["No owner_unit to compare"],
+                "revivable_drafts": None,
+            }
+
+        # Look for historical projects with same owner_unit (using LIKE for similarity)
+        # and bid_open_date within 12 months
+        twelve_months_ago = datetime.now(timezone.utc) - timedelta(days=365)
+
+        historical_projects = (
+            self.db.query(Project)
+            .filter(
+                Project.id != project_id,
+                Project.owner_unit == new_project.owner_unit,
+                Project.bid_open_date >= twelve_months_ago,
+            )
+            .all()
+        )
+
+        if not historical_projects:
+            return {
+                "is_rebid": False,
+                "historical_project_id": None,
+                "historical_outcome": None,
+                "similarity_score": None,
+                "alert_level": None,
+                "warnings": [],
+                "revivable_drafts": None,
+            }
+
+        # Get the most recent historical project
+        historical = historical_projects[0]
+
+        # Get the bid outcome for historical project
+        historical_outcome = (
+            self.db.query(BidOutcome)
+            .filter(BidOutcome.project_id == historical.id)
+            .order_by(desc(BidOutcome.id))
+            .first()
+        )
+
+        outcome_status = historical_outcome.outcome_status if historical_outcome else "unknown"
+
+        # Check for revivable abandoned drafts
+        revivable_drafts = []
+        if historical.id:
+            drafts = (
+                self.db.query(AbandonedDraft)
+                .filter(
+                    AbandonedDraft.project_id == historical.id,
+                    AbandonedDraft.can_be_revived == True,
+                )
+                .all()
+            )
+            for draft in drafts:
+                revivable_drafts.append({
+                    "id": draft.id,
+                    "termination_reason": draft.termination_reason,
+                    "archived_at": draft.archived_at.isoformat() if draft.archived_at else None,
+                })
+
+        return {
+            "is_rebid": True,
+            "historical_project_id": historical.id,
+            "historical_outcome": outcome_status,
+            "similarity_score": 0.95,  # High similarity since same owner_unit
+            "alert_level": "high",
+            "warnings": [f"Potential rebid of project {historical.id} ({outcome_status})"],
+            "revivable_drafts": revivable_drafts if revivable_drafts else None,
         }

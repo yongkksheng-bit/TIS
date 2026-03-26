@@ -36,7 +36,7 @@ class BidOutcomeResponse(BaseModel):
     reviewed_by: Optional[int] = None
     reviewed_at: Optional[datetime] = None
     review_notes: Optional[str] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 
