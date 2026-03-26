@@ -27,6 +27,7 @@ from app.models.approval import ApprovalLog
 from app.models.discarded import DiscardedProject
 from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.tech_proposal import TechProposalTask, ScoringIndex, GenerationLog
+from app.models.pricing import CostEstimate, PricingDecision, PriceHistory
 
 __all__ = [
     "Base",
@@ -61,4 +62,7 @@ __all__ = [
     "TechProposalTask",
     "ScoringIndex",
     "GenerationLog",
+    "CostEstimate",
+    "PricingDecision",
+    "PriceHistory",
 ]
