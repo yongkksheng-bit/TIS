@@ -29,6 +29,7 @@ from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.tech_proposal import TechProposalTask, ScoringIndex, GenerationLog
 from app.models.pricing import CostEstimate, PricingDecision, PriceHistory
 from app.models.formal_review import FormalReviewItem, AbandonedDraft, FinalBidDocument
+from app.models.review import BidOutcome, WinningDNA, DisqualificationTrap, DraftRevival, KnowledgeEvolutionLog
 
 __all__ = [
     "Base",
@@ -69,4 +70,9 @@ __all__ = [
     "FormalReviewItem",
     "AbandonedDraft",
     "FinalBidDocument",
+    "BidOutcome",
+    "WinningDNA",
+    "DisqualificationTrap",
+    "DraftRevival",
+    "KnowledgeEvolutionLog",
 ]
