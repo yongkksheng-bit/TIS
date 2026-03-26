@@ -25,6 +25,8 @@ from app.models.owner import OwnerProfile
 from app.models.evaluation import BidEvaluationReport
 from app.models.approval import ApprovalLog
 from app.models.discarded import DiscardedProject
+from app.models.knowledge_chunk import KnowledgeChunk
+from app.models.tech_proposal import TechProposalTask, ScoringIndex, GenerationLog
 
 __all__ = [
     "Base",
@@ -55,4 +57,8 @@ __all__ = [
     "BidEvaluationReport",
     "ApprovalLog",
     "DiscardedProject",
+    "KnowledgeChunk",
+    "TechProposalTask",
+    "ScoringIndex",
+    "GenerationLog",
 ]
