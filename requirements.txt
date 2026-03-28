@@ -14,3 +14,4 @@ paddlepaddle>=3.0.0
 structlog>=24.1.0
 httpx>=0.26.0
 pytest>=8.0.0
+sentry-sdk>=2.0.0

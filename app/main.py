@@ -1,9 +1,26 @@
 # app/main.py
+import os
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.logger import get_logger, StructuredLoggingMiddleware
+
 app = FastAPI(title="TIS API", version="1.0.0")
+
+# ── Sentry initialization ────────────────────────────────────────────────────
+sentry_sdk.init(
+    dsn=os.environ.get("SENTRY_DSN", ""),
+    environment=os.environ.get("SENTRY_ENV", "development"),
+    integrations=[
+        FastApiIntegration(transaction_style="url"),
+    ],
+    ignore_errors=[HTTPException],
+    send_default_pii=False,
+    traces_sample_rate=0.1,
+)
 
 # CORS middleware - allow frontend on port 3000
 app.add_middleware(
@@ -14,8 +31,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Structured logging middleware
+app.add_middleware(StructuredLoggingMiddleware)
+
 @app.exception_handler(ValueError)
 async def value_error_handler(request, exc):
+    log = get_logger("exception")
+    log.error("value_error", detail=str(exc))
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 from app.api.v1.endpoints import projects, documents, evaluations, rag, pricing, formal_review, review
