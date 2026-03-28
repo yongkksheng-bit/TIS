@@ -1,63 +1,117 @@
 version: '3.8'
 
 services:
+  # ── PostgreSQL + pgvector ──────────────────────────────────────────
   db:
     image: pgvector/pgvector:pg15
+    container_name: tis_db
     environment:
-      POSTGRES_DB: tis
-      POSTGRES_USER: tis
-      POSTGRES_PASSWORD: tis
+      POSTGRES_DB: ${POSTGRES_DB:-tis}
+      POSTGRES_USER: ${POSTGRES_USER:-tis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tis"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tis}"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    networks:
+      - tis_net
 
+  # ── Redis ────────────────────────────────────────────────────────────
   redis:
-    image: redis:7
+    image: redis:7-alpine
+    container_name: tis_redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - tis_net
 
+  # ── MinIO (Object Storage) ─────────────────────────────────────────
   minio:
     image: minio/minio
+    container_name: tis_minio
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-change_me_in_production}
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - tis_net
 
-  app:
+  # ── FastAPI Backend ─────────────────────────────────────────────────
+  backend:
     build:
       context: .
       dockerfile: app/Dockerfile
-    ports:
-      - "8000:8000"
+    container_name: tis_backend
     environment:
-      DATABASE_URL: postgresql://tis:tis@db:5432/tis
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tis}:${POSTGRES_PASSWORD:-change_me_in_production}@db:5432/${POSTGRES_DB:-tis}
       REDIS_URL: redis://redis:6379/0
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-change_me_in_production}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      INIT_DATA: ${INIT_DATA:-false}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
-      minio:
-        condition: service_started
-    volumes:
-      - ./docker/entrypoint.sh:/entrypoint.sh
-    entrypoint: ["/bin/bash", "/entrypoint.sh"]
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - tis_net
+
+  # ── Vue Frontend (Nginx) ────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_USE_MOCK: "false"
+        VITE_API_BASE_URL: "/api"
+    container_name: tis_frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - tis_net
+
+networks:
+  tis_net:
+    driver: bridge
 
 volumes:
   postgres_data:
+  redis_data:
   minio_data:
