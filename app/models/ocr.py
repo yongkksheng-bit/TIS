@@ -45,7 +45,7 @@ class OcrExtraction(Base, TimestampMixin):
     image: Mapped["DocumentImage"] = relationship("DocumentImage", back_populates="ocr_extractions")
     project: Mapped["Project"] = relationship("Project", back_populates="ocr_extractions")
     standard_certification: Mapped[Optional["StandardCertification"]] = relationship(
-        "StandardCertification", foreign_keys=[standard_cert_id]
+        "StandardCertification", back_populates="ocr_extractions"
     )
 
 

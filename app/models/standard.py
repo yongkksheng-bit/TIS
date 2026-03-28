@@ -34,7 +34,7 @@ class StandardCertification(Base, TimestampMixin):
 
     # Relationships
     ocr_extractions: Mapped[List["OcrExtraction"]] = relationship(
-        "OcrExtraction", foreign_keys="OcrExtraction.standard_cert_id"
+        "OcrExtraction", back_populates="standard_certification"
     )
 
 
