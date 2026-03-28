@@ -82,17 +82,8 @@ const isParsing = ref(false)
 const parsingProgress = ref(0)
 const isDragover = ref(false)
 const showRebidAlert = ref(false)
-const rebidAlertData = ref<RebidAlertData>({
-  historicalProject: 'XX学校2025年食堂配送项目',
-  historicalOutcome: '废标（形式审查：授权书签字缺失）',
-  timeDiff: '6 个月前',
-  warnings: ['历史废标原因：授权书第5页缺少法定代表人签字', '建议本次形式审查重点检查签字完整性'],
-  revivableDraft: {
-    id: 1,
-    description: '技术标草稿（2025-10-15 生成）',
-    reusability: '85%',
-  },
-})
+// Historical rebid data — populated by API after file parsing detects a rebid scenario
+const rebidAlertData = ref<RebidAlertData | null>(null)
 
 function handleFileChange(file: unknown) {
   const f = (file as { raw: File }).raw
@@ -129,10 +120,10 @@ function goBack() {
 }
 
 onMounted(() => {
-  // Auto-show rebid alert for demo purposes
-  setTimeout(() => {
+  // Only show rebid alert if historical data has been detected (from API after parsing)
+  if (rebidAlertData.value !== null) {
     showRebidAlert.value = true
-  }, 500)
+  }
 })
 </script>
 
