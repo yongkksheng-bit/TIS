@@ -33,7 +33,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /root/.local /home/appuser/.local
 
 # Copy application code
-COPY --chown=appuser:appuser alembic/alembic.ini /app/alembic.ini
+COPY --chown=appuser:appuser alembic.ini /app/alembic.ini
+COPY --chown=appuser:appuser alembic/env.py /app/alembic/env.py
 COPY --chown=appuser:appuser alembic/versions /app/alembic/versions
 COPY --chown=appuser:appuser app/ /app/app/
 COPY --chown=appuser:appuser requirements.txt /app/requirements.txt
