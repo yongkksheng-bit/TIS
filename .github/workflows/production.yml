@@ -1,0 +1,139 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+# Cancel in-progress runs on same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+  POSTGRES_DB: tis_test
+  POSTGRES_USER: tis
+  POSTGRES_PASSWORD: tis
+  POSTGRES_HOST: localhost
+
+jobs:
+  # ── Job 1: Test ──────────────────────────────────────────────────────
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 3
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Pre-build frontend (type check + build)
+        run: |
+          cd frontend
+          npm ci --prefer-offline
+          npm run build
+        env:
+          VITE_USE_MOCK: "false"
+          VITE_API_BASE_URL: "/api"
+
+      - name: Run backend tests (Week 3 + 4 + 5)
+        run: |
+          python -m pytest tests/week3/ tests/week4/ tests/week5/ \
+            -v --tb=short --maxfail=1
+        env:
+          DATABASE_URL: postgresql://${{ env.POSTGRES_USER }}:${{ env.POSTGRES_PASSWORD }}@${{ env.POSTGRES_HOST }}:5432/${{ env.POSTGRES_DB }}
+          REDIS_URL: redis://localhost:6379/0
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: .pytest_cache/
+          retention-days: 7
+
+  # ── Job 2: Deploy (simulated) ────────────────────────────────────────
+  deploy:
+    name: Deploy (Simulated)
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub (mock)
+        run: echo "DOCKER_TOKEN=mock" >> $GITHUB_ENV
+
+      - name: Build Docker images
+        run: |
+          docker compose build --no-cache backend frontend
+
+      - name: Save Docker images as artifact
+        run: |
+          docker save -o docker-images.tar \
+            tis_backend tis_frontend tis_db tis_redis tis_minio
+
+      - name: Upload Docker images artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-images
+          path: docker-images.tar
+          retention-days: 1
+
+      - name: Simulate SSH deployment
+        run: |
+          chmod +x scripts/simulate_deploy.sh
+          ./scripts/simulate_deploy.sh
+        env:
+          DEPLOY_SERVER: ${{ secrets.DEPLOY_SERVER || 'localhost' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
