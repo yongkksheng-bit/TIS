@@ -6,10 +6,18 @@
         <h1 class="text-2xl font-semibold text-gray-800">项目列表</h1>
         <p class="text-sm text-gray-500 mt-1">共 {{ projectStore.projects.length }} 个项目</p>
       </div>
-      <el-button type="primary" size="large">
-        <el-icon class="mr-1"><Plus /></el-icon>
-        新建项目
-      </el-button>
+      <div class="flex gap-3">
+        <el-statistic title="进行中" :value="countByStatus('in_progress')" />
+        <el-divider direction="vertical" />
+        <el-statistic title="已完成" :value="countByStatus('completed')" />
+        <el-divider direction="vertical" />
+        <el-statistic title="待处理" :value="countByStatus('pending')" />
+        <el-divider direction="vertical" />
+        <el-button type="primary" size="large" @click="router.push('/projects/new/upload')">
+          <el-icon class="mr-1"><Plus /></el-icon>
+          新建项目
+        </el-button>
+      </div>
     </div>
 
     <!-- Filter tabs -->
