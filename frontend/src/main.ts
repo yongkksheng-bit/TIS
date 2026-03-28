@@ -22,8 +22,8 @@ Sentry.init({
     'Request failed with status 400',
     'HTTP 400',
   ],
-  beforeSend(event: { level: string }) {
-    const level = event.level
+  beforeSend(event, _hint) {
+    const level = (event as any).level
     if (level === 'warning' || level === 'info' || level === 'debug') {
       return null
     }
