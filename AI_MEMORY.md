@@ -195,6 +195,8 @@ cd D:/tis_project && python scripts/live_fire_e2e.py
 **新增文件：**
 - `alembic/versions/w010_add_plan_codes.py` — 迁移 plan_code + agency_project_code
 - `alembic/versions/w009_add_retender_columns.py` — 迁移 is_retender + parent_project_id
+- `alembic/versions/w011_add_soft_delete.py` — 迁移 is_deleted(Boolean, default=False)
+- `alembic/versions/w012_add_is_deleted_index.py` — 迁移复合索引（is_deleted+status）
 
 **防重端点（POST /api/projects）：**
 ```python
@@ -342,7 +344,9 @@ D:\tis_project\
 │   ├── w007_add_relation_identifier.py
 │   ├── w008_add_updated_at_to_approval_logs.py
 │   ├── w009_add_retender_columns.py    ← is_retender + parent_project_id
-│   └── w010_add_plan_codes.py           ← plan_code + agency_project_code
+│   ├── w010_add_plan_codes.py           ← plan_code + agency_project_code
+│   ├── w011_add_soft_delete.py          ← is_deleted(Boolean, default=False)
+│   └── w012_add_is_deleted_index.py     ← ix_projects_is_deleted + ix_projects_is_deleted_status
 ├── ai_service/                          ← ⭐ AI 微服务（BGE-Small + Reranker-Base 异构）
 │   ├── main.py                          ← 最终版：GPU FP16 + CPU FP32
 │   └── requirements.txt                 ← transformers<=4.38.0 锁定
@@ -355,7 +359,13 @@ D:\tis_project\
 
 ## 短期路线图
 
-- [x] ai_service 微服务异构计算架构（GPU FP16 Embedder + CPU FP32 Reranker）— 镜像 build 成功，待拉起
-- [ ] 重启后拉起 ai_service 并验证 `docker compose up -d --force-recreate ai_service`
-- [ ] 真实 DeepSeek API 配置（当前 `source_chunk_count: 0`，返回模拟内容）
+- [x] ai_service 微服务异构计算架构（GPU FP16 Embedder + CPU FP32 Reranker）— ✅ 已稳定运行
+- [x] Bug-011 架构修复（DeepSeekEmbedder → AIServiceEmbedder）— ✅ 已完成
+- [x] 前端 axios 120s 超时 — ✅ 已完成
+- [x] 软删除 is_deleted 上线 — ✅ w011 + w012 已迁移，DELETE 端点已上线
+- [x] 初审意见 10 字锁解除 — ✅ approval_service.py 已修复
+- [x] E2E 软删除闭环验证 — ✅ 同名重建无 409
+- [ ] 接通真实 DeepSeek LLM（text generation，source_chunk_count > 0）
 - [ ] 历史标书批量注入：`python scripts/ingest_tenders.py` 灌入 10 份真实标书
+- [ ] OCR bid_open_date 提取精度提升
+- [ ] PDF iframe 预览时序修复
