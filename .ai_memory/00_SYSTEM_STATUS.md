@@ -101,7 +101,7 @@ python scripts/live_fire_e2e.py
 
 ### R5：双重防重校验机制（基于真实业务编号）
 - **防重优先级**：plan_code > agency_project_code > project_name（兜底）
-- **排除状态**：discarded / terminated_by_bost 不参与重复检测
+- **排除状态**：discarded / terminated_by_bost / **is_deleted=True（软删除）** 不参与重复检测
 - **409 Payload** 必须包含 `duplicate_code`（含编号类型：采购计划编号 / 采购项目编号）
 
 ### 关系标识与生成模式正交原则
@@ -112,6 +112,26 @@ python scripts/live_fire_e2e.py
 ### 业务阻断必须用 ElMessageBox.confirm
 - `ElMessage.error()` → 仅用于非阻断性错误
 - `ElMessageBox.confirm()` → 所有需要用户决策的业务阻断（409、权限不足、状态不允许）
+
+### 项目软删除（is_deleted）原则
+- `DELETE /projects/{id}` 执行软删除（is_deleted=True），不物理删除记录
+- 软删除后的项目不参与任何重复检测，允许同名项目重新创建
+- `GET /projects` 和 `GET /{id}` 均过滤 `is_deleted=False`
+- 硬删除（物理删除）预留 `_hard_delete_project()` 钩子，待未来实现
+
+### 算力异构架构（永久锁定）
+- **Embedding**：BGE-Small on GPU (FP16) → `AIServiceEmbedder` 调用 `http://ai_service:8000/embed`
+- **Reranking**：BGE-Reranker-Base on CPU (FP32) → `CrossEncoder(..., device="cpu")`
+- **Text Generation**：DeepSeek `/chat/completions`（仅用于 LLM 生成，绝不用于嵌入任务）
+- 严禁将 Embedding/Reranking 任务路由到外部 DeepSeek Embeddings API
+
+### RAG 长文档处理（12,000 字符截断 + 4 维度法务 Prompt）
+- 超过 12,000 字符的文档在 RAG 检索前截断
+- 资质提取采用 4 维度法务级 Prompt：政采法22条 / 军采特殊资质 / 实质性承诺★ / 废标条款
+- RAG 检索是处理长文档（>12,000 chars）的唯一路径
+
+### 前端请求超时配置
+- axios 全局 `timeout: 120000`（120 秒），适应大 PDF 解析 + GPU 向量计算
 
 ---
 

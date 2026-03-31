@@ -88,6 +88,26 @@ curl -X POST http://localhost:8000/embed -H "Content-Type: application/json" -d 
 - 有关系 ≠ 必须走 GUIDED；没关系 ≠ 必须走 AUTO
 - 专员根据项目复杂度独立选择生成模式
 
+### 🔴 算力异构架构（永久锁定，严禁回退）
+- **Embedding**：BGE-Small on GPU (FP16) → `AIServiceEmbedder` 调用 `http://ai_service:8000/embed`
+- **Reranking**：BGE-Reranker-Base on CPU (FP32) → `CrossEncoder(..., device="cpu")`
+- **Text Generation**：DeepSeek `/chat/completions`（仅用于 LLM 生成，绝不用于嵌入任务）
+- 严禁将 Embedding/Reranking 任务路由到外部 DeepSeek Embeddings API
+
+### 🔴 RAG 长文档处理（12,000 字符截断 + 4 维度法务 Prompt）
+- 超过 12,000 字符的文档在 RAG 检索前截断
+- 资质提取采用 4 维度法务级 Prompt：政采法22条 / 军采特殊资质 / 实质性承诺★ / 废标条款
+- RAG 检索是处理长文档（>12,000 chars）的唯一路径
+
+### 🔴 项目软删除（is_deleted）原则
+- `DELETE /projects/{id}` 执行软删除（is_deleted=True），不物理删除
+- 软删除后的项目不参与任何重复检测，允许同名项目重新创建
+- `GET /projects` 和 `GET /{id}` 均过滤 `is_deleted=False`
+- 硬删除（物理删除）预留 `_hard_delete_project()` 钩子，待未来实现
+
+### 🔴 前端请求超时配置
+- axios 全局 `timeout: 120000`（120 秒），适应大 PDF 解析 + GPU 向量计算
+
 ### 🔴 Auto-Save Daemon（记忆自动存档进程）
 **每次完成以下任意操作后，在回复用户之前，必须主动更新 `AI_MEMORY.md`，不得询问。**
 
@@ -367,5 +387,4 @@ D:\tis_project\
 - [x] E2E 软删除闭环验证 — ✅ 同名重建无 409
 - [ ] 接通真实 DeepSeek LLM（text generation，source_chunk_count > 0）
 - [ ] 历史标书批量注入：`python scripts/ingest_tenders.py` 灌入 10 份真实标书
-- [ ] OCR bid_open_date 提取精度提升
-- [ ] PDF iframe 预览时序修复
+

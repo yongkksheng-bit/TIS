@@ -81,6 +81,39 @@
 - `usage_count=0` 且 3 个月未使用的知识块标记 deprecated
 - 废标原因自动提取，更新形式审查清单模板
 
+### R5. 双重防重校验机制（基于真实业务编号）
+
+基于业务层面的真实编号进行精确防重，而非依赖内部自增 ID：
+
+- **第一优先级**：`plan_code`（采购计划编号）—— 最精准的业务标识
+- **第二优先级**：`agency_project_code`（采购项目编号）—— 可空，部分项目无代理机构编号
+- **兜底**：`project_name`（项目名称）—— 仅在前两者均不存在时使用
+- 已废弃状态（`discarded`、`terminated_by_boss`）不参与重复检测
+- **软删除排除**：已移入回收站的项目（`is_deleted=True`）不参与任何重复检测，允许同名项目重建
+
+### R6. 项目软删除与回收站
+
+- `DELETE /projects/{id}` 执行软删除（`is_deleted=True`），不物理删除记录
+- 软删除的项目不参与三重防重检测，允许同名项目重新创建
+- 硬删除（物理删除）为未来扩展，预留 `_hard_delete_project()` 钩子
+
+### R7. 算力异构架构（永久锁定）
+
+- **Embedding**：BGE-Small on GPU (FP16) → `AIServiceEmbedder` 调用本地 `ai_service:8000/embed`
+- **Reranking**：BGE-Reranker-Base on CPU (FP32) → `CrossEncoder(..., device="cpu")`
+- **Text Generation**：DeepSeek `/chat/completions`（仅用于 LLM 生成，绝不用于嵌入任务）
+- 严禁将 Embedding/Reranking 路由到外部 DeepSeek Embeddings API
+
+### R8. RAG 长文档处理（12,000 字符截断 + 4 维度法务 Prompt）
+
+- 超过 12,000 字符的文档在 RAG 检索前截断
+- 资质提取采用 4 维度法务级 Prompt：政采法22条 / 军采特殊资质 / 实质性承诺★ / 废标条款
+- RAG 检索是处理长文档（>12,000 chars）的唯一路径
+
+### R9. 前端请求超时配置
+
+- axios 全局 `timeout: 120000`（120 秒），适应大 PDF 解析 + GPU 向量计算
+
 ---
 
 ## 四、项目全生命周期状态机
