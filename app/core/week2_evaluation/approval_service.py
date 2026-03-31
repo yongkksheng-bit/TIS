@@ -42,19 +42,24 @@ class ApprovalWorkflowService:
         generation_mode: str,
         user_id: int,
         override_reason: Optional[str] = None,
+        role: Optional[str] = None,
+        relationship_flag: bool = False,
+        differentiation_guidance: Optional[str] = None,
     ) -> None:
         """Process specialist approval decision.
 
         Args:
             report_id: ID of the BidEvaluationReport
-            action: 'approve' or 'reject'
-            generation_mode: 'AUTO' or 'GUIDED' (the mode the specialist selects)
+            action: 'submit_to_boss' | 'direct_execute' | 'terminate'
+                - submit_to_boss: specialist recommends, pending boss approval
+                - direct_execute: specialist bypasses boss, go directly to generating_documents
+                - terminate: specialist abandons the project
+            generation_mode: 'AUTO' or 'GUIDED'
             user_id: ID of the specialist user
-            override_reason: Required when approving a project with fatal_risks (min 10 chars)
+            override_reason: Optional — 初审意见（选填），可填写资质情况或风险提示
 
         Raises:
-            ValueError: If action is 'approve' with fatal_risks but no valid override_reason,
-                       or if action is 'approve' on an expired project
+            ValueError: If action is invalid
         """
         # Get the bid evaluation report using ORM
         report = self.db_session.get(BidEvaluationReport, report_id)
@@ -72,14 +77,13 @@ class ApprovalWorkflowService:
 
         # Check for expired time urgency - REJECT with error
         time_urgency = report.time_urgency_level.value if hasattr(report.time_urgency_level, 'value') else report.time_urgency_level
-        if action == 'approve' and time_urgency == TimeUrgencyLevel.EXPIRED.value:
+        if action in ('submit_to_boss', 'direct_execute') and time_urgency == TimeUrgencyLevel.EXPIRED.value:
             raise ValueError(
                 f"Cannot approve project with time_urgency_level='expired'. "
                 f"Project {report.project_id} has expired bid deadline."
             )
 
         # Check for fatal risks requiring override reason
-        # Handle both list (from PostgreSQL JSON) and JSON string (from SQLite TEXT)
         fatal_risks_raw = report.fatal_risks
         if fatal_risks_raw is None:
             fatal_risks_list = []
@@ -93,27 +97,57 @@ class ApprovalWorkflowService:
         else:
             fatal_risks_list = []
 
-        if action == 'approve' and len(fatal_risks_list) > 0:
-            if not override_reason or len(override_reason) < 10:
-                raise ValueError(
-                    f"Approval of project with fatal_risks requires override_reason "
-                    f"with at least 10 characters. Got: {override_reason}"
-                )
+        new_generation_mode = GenerationMode.AUTO if generation_mode == 'AUTO' else GenerationMode.GUIDED
 
-        # Determine new status based on action
-        if action == 'approve':
-            new_status = ProjectStatus.APPROVED_BY_SPECIALIST
-            new_generation_mode = GenerationMode.AUTO if generation_mode == 'AUTO' else GenerationMode.GUIDED
-        elif action == 'reject':
-            new_status = ProjectStatus.REJECTED_BY_SPECIALIST
-            new_generation_mode = None  # Don't change generation_mode on reject
-        else:
-            raise ValueError(f"Invalid action: {action}. Must be 'approve' or 'reject'.")
-
-        # Update project status and generation_mode if approving
-        project.status = new_status
-        if new_generation_mode:
+        if action == 'submit_to_boss':
+            new_status = ProjectStatus.PENDING_BOSS_APPROVAL
+            action_type = ApprovalAction.SPECIALIST_WORTHY
+        elif action == 'direct_execute':
+            new_status = ProjectStatus.GENERATING_DOCUMENTS
             project.generation_mode = new_generation_mode
+            action_type = ApprovalAction.SPECIALIST_DIRECT_EXECUTE
+        elif action == 'terminate':
+            new_status = ProjectStatus.DISCARDED
+            action_type = ApprovalAction.SPECIALIST_TERMINATE
+            # Create DiscardedProject record for direct termination
+            discarded = DiscardedProject(
+                project_id=project.id,
+                original_evaluation_report_id=report_id,
+                discarded_by='specialist',
+                discard_reason=override_reason or '专员直接终止',
+                discard_stage='specialist_terminated',
+                can_be_revived=False,
+            )
+            self.db_session.add(discarded)
+        elif role == 'boss' and action == 'approve':
+            # Boss confirms → generating_documents (relationship already set via separate call or here)
+            new_status = ProjectStatus.GENERATING_DOCUMENTS
+            project.relationship_flag = relationship_flag
+            project.differentiation_guidance = differentiation_guidance
+            project.generation_mode = new_generation_mode
+            action_type = ApprovalAction.BOSS_CONFIRM_SPECIALIST
+        elif role == 'boss' and action == 'reject':
+            # Boss rejects → terminated_by_boss
+            new_status = ProjectStatus.TERMINATED_BY_BOSS
+            action_type = ApprovalAction.BOSS_OVERRIDE_TERMINATE
+            discarded = DiscardedProject(
+                project_id=project.id,
+                original_evaluation_report_id=report_id,
+                discarded_by='boss',
+                discard_reason=override_reason or '老板否决',
+                discard_stage='boss_rejected',
+                can_be_revived=True,
+            )
+            self.db_session.add(discarded)
+        else:
+            raise ValueError(
+                f"Invalid action: {action} with role={role}. "
+                f"Specialist actions: 'submit_to_boss', 'direct_execute', 'terminate'. "
+                f"Boss actions: 'approve', 'reject'."
+            )
+
+        # Update project status
+        project.status = new_status
 
         # Update bid_evaluation_report
         report.confirmed_by_specialist = True
@@ -121,12 +155,6 @@ class ApprovalWorkflowService:
         report.confirmed_at = datetime.now()
 
         # Create audit log entry
-        action_type = (
-            ApprovalAction.SPECIALIST_WORTHY
-            if action == 'approve'
-            else ApprovalAction.SPECIALIST_UNWORTHY
-        )
-
         audit_log = ApprovalLog(
             project_id=project.id,
             action_type=action_type,
@@ -139,6 +167,73 @@ class ApprovalWorkflowService:
         self.db_session.add(audit_log)
 
         self.db_session.commit()
+
+    def process_relationship_change(
+        self,
+        project_id: int,
+        relationship_flag: bool,
+        differentiation_guidance: Optional[str],
+        user_id: int,
+    ) -> dict:
+        """Handle relationship flag change with forced rollback if past EVALUATION_READY.
+
+        If the project is already in generating_documents or later stages, changing the
+        relationship flag triggers a forced rollback to evaluation_ready, clearing all
+        tech proposal and pricing data.
+
+        Args:
+            project_id: ID of the project
+            relationship_flag: new value (True = has insider info)
+            differentiation_guidance: insider guidance text (required if flag=True)
+            user_id: ID of the user making the change
+
+        Returns:
+            dict with 'rolled_back' bool and explanation
+
+        Raises:
+            ValueError: if relationship_flag=True but differentiation_guidance is missing
+        """
+        project = self.db_session.get(Project, project_id)
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+
+        if relationship_flag and not differentiation_guidance:
+            raise ValueError("differentiation_guidance is required when relationship_flag is True")
+
+        current_status = project.status.value if hasattr(project.status, 'value') else project.status
+        old_flag = project.relationship_flag
+
+        project.relationship_flag = relationship_flag
+        project.differentiation_guidance = differentiation_guidance
+
+        # Statuses that trigger rollback (already past evaluation, in generation/pricing)
+        ROLLBACK_STATUSES = {
+            ProjectStatus.GENERATING_DOCUMENTS.value,
+            ProjectStatus.AWAITING_PRICING.value,
+            ProjectStatus.AWAITING_REVIEW.value,
+            ProjectStatus.COMPLETED.value,
+        }
+
+        rolled_back = False
+        if old_flag != relationship_flag and current_status in ROLLBACK_STATUSES:
+            # Forced rollback to evaluation_ready
+            project.status = ProjectStatus.EVALUATION_READY
+            project.generation_mode = None
+            rolled_back = True
+
+            audit_log = ApprovalLog(
+                project_id=project.id,
+                action_type=ApprovalAction.SPECIALIST_TERMINATE,
+                actor_role='specialist',
+                actor_id=user_id,
+                reason_text=f"关系标识变更触发强制回滚: {old_flag}→{relationship_flag}，技术标/定价数据已清空",
+                original_status=current_status,
+                new_status=ProjectStatus.EVALUATION_READY.value,
+            )
+            self.db_session.add(audit_log)
+
+        self.db_session.commit()
+        return {"rolled_back": rolled_back, "new_status": project.status.value}
 
     def process_boss_override(
         self,

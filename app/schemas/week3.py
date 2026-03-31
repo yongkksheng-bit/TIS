@@ -47,3 +47,17 @@ class GeneratedSectionResponse(BaseModel):
     token_usage: dict[str, int]
     source_chunk_count: int
     generation_timestamp: str
+
+
+class SectionData(BaseModel):
+    """Single section's generated data."""
+    section_name: str
+    content: str
+    mode: str
+    generation_timestamp: str
+
+
+class GetSectionsResponse(BaseModel):
+    """Response listing all generated sections for a project."""
+    project_id: int
+    sections: list[SectionData]

@@ -113,8 +113,13 @@ class BidEvaluationEngine:
         risk_level = self._determine_risk_level(fatal_risks, warning_risks)
 
         # Persist to database
+        # Get next report version to avoid unique constraint violation
+        latest = self.db.query(BidEvaluationReport).filter_by(project_id=self.project_id).order_by(BidEvaluationReport.report_version.desc()).first()
+        next_version = (latest.report_version + 1) if latest else 1
+
         report = BidEvaluationReport(
             project_id=self.project_id,
+            report_version=next_version,
             qualification_match_score=qual_result['qualification_match_score'],
             missing_mandatory_certs=qual_result['missing_mandatory_certs'],
             missing_optional_certs=qual_result['missing_optional_certs'],
@@ -149,6 +154,7 @@ class BidEvaluationEngine:
             'qualification': {
                 'qualification_match_score': qual_result['qualification_match_score'],
                 'is_qualification_pass': qual_result['is_qualification_pass'],
+                'is_extraction_valid': qual_result.get('is_extraction_valid', True),
                 'missing_mandatory_certs': qual_result['missing_mandatory_certs'],
                 'missing_optional_certs': qual_result['missing_optional_certs'],
                 'matched_certs': qual_result['matched_certs'],
@@ -206,6 +212,11 @@ class BidEvaluationEngine:
                 return (
                     Recommendation.ABANDON,
                     f"Qualification score {qual_result['qualification_match_score']} below fatal threshold (60)"
+                )
+            elif not qual_result.get('is_extraction_valid', True):
+                return (
+                    Recommendation.ABANDON,
+                    "Failed to extract qualification requirements from tender document - cannot assess eligibility"
                 )
             else:
                 return (

@@ -15,7 +15,14 @@ class TimeEvaluator:
     - relaxed: > 15 days
     """
 
-    def calculate(self, bid_open_date: datetime, current: Optional[datetime] = None) -> dict:
+    def calculate(self, bid_open_date: Optional[datetime], current: Optional[datetime] = None) -> dict:
+        if bid_open_date is None:
+            return {
+                'days_until_bid_open': None,
+                'time_urgency_level': 'unknown',
+                'is_time_sufficient': None,
+                'working_days_estimate': None
+            }
         if current is None:
             current = datetime.now()
 

@@ -97,7 +97,8 @@ def specialist_approve(
             action=data.action,
             generation_mode=data.generation_mode,
             user_id=data.user_id,
-            override_reason=data.override_reason
+            override_reason=data.override_reason,
+            role=data.role,
         )
         # Get updated project status
         report = db.get(BidEvaluationReport, report_id)

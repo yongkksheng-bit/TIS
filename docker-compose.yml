@@ -1,20 +1,18 @@
-version: '3.8'
-
 services:
   # ── PostgreSQL + pgvector ──────────────────────────────────────────
   db:
     image: pgvector/pgvector:pg15
     container_name: tis_db
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-tis}
-      POSTGRES_USER: ${POSTGRES_USER:-tis}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+      POSTGRES_DB: canteen_system
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Syk0215
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tis}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -27,7 +25,7 @@ services:
     image: redis:7-alpine
     container_name: tis_redis
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -43,11 +41,11 @@ services:
     image: minio/minio
     container_name: tis_minio
     ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "9000:9000"
+      - "9001:9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-change_me_in_production}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
@@ -59,28 +57,56 @@ services:
     networks:
       - tis_net
 
+  # ── AI GPU Microservice (BGE Embedding + Reranker) ──────────────────
+  ai_service:
+    build:
+      context: ./ai_service
+      dockerfile: Dockerfile
+    container_name: tis_ai_service
+    environment:
+      HF_HOME: /app/data/huggingface_cache
+      HF_HUB_DISABLE_SYMLINKS: "1"
+    volumes:
+      - ./data/huggingface_cache:/app/data/huggingface_cache
+    ports:
+      - "8001:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+    networks:
+      - tis_net
+    restart: unless-stopped
+
   # ── FastAPI Backend ─────────────────────────────────────────────────
   backend:
     build:
       context: .
       dockerfile: app/Dockerfile
     container_name: tis_backend
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-tis}:${POSTGRES_PASSWORD:-change_me_in_production}@db:5432/${POSTGRES_DB:-tis}
-      REDIS_URL: redis://redis:6379/0
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-change_me_in_production}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      INIT_DATA: ${INIT_DATA:-false}
+    env_file:
+      - .env
+    volumes:
+      - ./.env:/app/.env:ro
+      - uploads_data:/tmp/tis_uploads
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ai_service:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -100,7 +126,7 @@ services:
         VITE_API_BASE_URL: "/api"
     container_name: tis_frontend
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "3000:80"
     depends_on:
       backend:
         condition: service_healthy
@@ -115,3 +141,4 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
+  uploads_data:

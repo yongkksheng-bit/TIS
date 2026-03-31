@@ -5,61 +5,112 @@
       <p class="text-sm text-gray-500 mt-1">请核对 AI 提取的信息，如有错误请修正</p>
     </div>
 
-    <div class="flex gap-6">
-      <!-- Left: PDF info placeholder -->
-      <div class="pdf-placeholder">
-        <el-card class="pdf-card">
-          <div class="flex flex-col items-center justify-center h-full">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" style="align-items: start;">
+      <!-- Left: PDF preview — 50% width, tall -->
+      <div class="pdf-preview-wrapper">
+        <el-card class="pdf-card" style="border-radius: 12px;">
+          <template #header>
+            <span class="font-medium text-sm">招标文件预览</span>
+          </template>
+          <div v-if="pdfUrl" class="pdf-viewer">
+            <iframe :src="pdfUrl" class="pdf-iframe" title="招标文件预览" />
+          </div>
+          <div v-else class="flex flex-col items-center justify-center py-12">
             <el-icon :size="48" class="text-gray-300"><Document /></el-icon>
-            <p class="text-sm text-gray-400 mt-3">招标文件预览</p>
-            <p class="text-xs text-gray-300 mt-1">{{ project.pdf_file || '未上传文件' }}</p>
+            <p class="text-sm text-gray-400 mt-3">正在加载预览...</p>
           </div>
         </el-card>
       </div>
 
-      <!-- Right: Editable form -->
-      <div class="flex-1">
-        <el-card class="form-card">
-          <el-form :model="formData" label-position="top" class="ocr-form">
-            <el-form-item label="项目名称">
-              <el-input v-model="formData.project_name" placeholder="项目名称" />
-            </el-form-item>
-            <el-form-item label="业主单位">
-              <el-input v-model="formData.owner_unit" placeholder="业主单位" />
-            </el-form-item>
-            <el-form-item label="项目预算（元）">
-              <el-input-number
-                v-model="formData.budget_amount"
-                :min="0"
-                :step="10000"
-                :precision="0"
-                class="w-full"
-              />
-            </el-form-item>
-            <el-form-item label="地区">
-              <el-input v-model="formData.region" placeholder="如：华南、华东" />
-            </el-form-item>
-            <el-form-item label="项目类型">
-              <el-select v-model="formData.project_type" class="w-full">
-                <el-option label="服务类" value="service" />
-                <el-option label="货物类" value="goods" />
-                <el-option label="工程类" value="engineering" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="开标日期">
-              <el-date-picker
-                v-model="formData.bid_open_date"
-                type="date"
-                placeholder="选择日期"
-                class="w-full"
-                format="YYYY-MM-DD"
-                value-format="YYYY-MM-DD"
-              />
-            </el-form-item>
-            <el-form-item label="关系标识">
-              <el-switch v-model="formData.relationship_flag" />
-              <span class="text-sm text-gray-400 ml-2">是否涉及关联关系</span>
-            </el-form-item>
+      <!-- Right: Editable form — 2-column compact grid -->
+      <div>
+        <el-card v-loading="isLoadingOcr" class="form-card">
+          <el-form :model="formData" label-position="top" class="ocr-form" @submit.prevent="confirmAndProceed">
+            <!-- Row 1: 项目名称（full width） -->
+            <el-row :gutter="12">
+              <el-col :span="24">
+                <el-form-item label="项目名称" class="compact-label">
+                  <el-input v-model="formData.project_name" placeholder="项目名称" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <!-- Row 2: 业主单位 -->
+            <el-row :gutter="12">
+              <el-col :span="24">
+                <el-form-item label="业主单位" class="compact-label">
+                  <el-input v-model="formData.owner_unit" placeholder="业主单位" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <!-- Row 3: 预算 + 地区 -->
+            <el-row :gutter="12">
+              <el-col :span="12">
+                <el-form-item label="项目预算（元）" class="compact-label">
+                  <el-input-number
+                    v-model="formData.budget_amount"
+                    :min="0"
+                    :step="10000"
+                    :precision="0"
+                    class="w-full"
+                    controls-position="right"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="地区" class="compact-label">
+                  <el-input v-model="formData.region" placeholder="如：广东省广州市" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <!-- Row 4: 项目类型 + 截止时间 -->
+            <el-row :gutter="12">
+              <el-col :span="12">
+                <el-form-item label="项目类型" class="compact-label">
+                  <el-select v-model="formData.project_type" class="w-full">
+                    <el-option label="服务类" value="service" />
+                    <el-option label="货物类" value="goods" />
+                    <el-option label="工程类" value="engineering" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="提交投标文件截止时间" class="compact-label">
+                  <el-date-picker
+                    v-model="formData.bid_open_date"
+                    type="date"
+                    placeholder="选择日期"
+                    class="w-full"
+                    format="YYYY-MM-DD"
+                    value-format="YYYY-MM-DD"
+                  />
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <!-- Row 5: 采购计划编号 + 采购项目编号 -->
+            <el-row :gutter="12">
+              <el-col :span="12">
+                <el-form-item label="采购计划编号" class="compact-label">
+                  <el-input
+                    v-model="formData.plan_code"
+                    placeholder="如：441301-2025-03605"
+                    clearable
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="采购项目编号（选填）" class="compact-label">
+                  <el-input
+                    v-model="formData.agency_project_code"
+                    placeholder="如：HZJJ-2025118号"
+                    clearable
+                  />
+                </el-form-item>
+              </el-col>
+            </el-row>
           </el-form>
         </el-card>
       </div>
@@ -80,6 +131,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useProjectStore, type Project } from '@/stores/projectStore'
+import { apiClient } from '@/api/client'
 import { Document, Check } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
@@ -89,6 +141,8 @@ const projectStore = useProjectStore()
 
 const projectId = Number(route.params.id)
 const isConfirming = ref(false)
+const isLoadingOcr = ref(false)
+const pdfUrl = ref('')
 
 const project = reactive<Project>({
   id: projectId,
@@ -101,29 +155,106 @@ const project = reactive<Project>({
   relationship_flag: false,
   generation_mode: 'auto',
   bid_open_date: '',
-  pdf_file: '招标文件.pdf',
+  pdf_file: '',
 })
 
-const formData = reactive({
-  project_name: 'XX学校2026年食堂配送项目',
-  owner_unit: '深圳市XX学校',
-  budget_amount: 1500000,
-  region: '华南',
+const formData = ref({
+  project_name: '',
+  owner_unit: '',
+  budget_amount: 0,
+  region: '',
   project_type: 'service',
-  bid_open_date: '2026-04-15',
-  relationship_flag: false,
+  bid_open_date: '',
+  plan_code: '',
+  agency_project_code: '',
 })
 
-function confirmAndProceed() {
+// Map OCR field names (camelCase after response interceptor) to formData keys
+const FIELD_NAME_MAP: Record<string, keyof typeof formData.value> = {
+  projectName: 'project_name',
+  ownerUnit: 'owner_unit',
+  budgetAmount: 'budget_amount',
+  region: 'region',
+  projectType: 'project_type',
+  bidOpenDate: 'bid_open_date',
+  planCode: 'plan_code',
+  agencyProjectCode: 'agency_project_code',
+}
+
+function extractFieldValue(fields: Array<{ fieldName: string; fieldValue: string; normalizedValue?: string }>, key: string): string | number | boolean {
+  const field = fields.find(f => FIELD_NAME_MAP[f.fieldName] === key || f.fieldName === key)
+  if (!field) return ''
+  const val = field.normalizedValue ?? field.fieldValue
+  if (key === 'budget_amount') {
+    const num = parseFloat(val)
+    return isNaN(num) ? 0 : num
+  }
+  return val
+}
+
+onMounted(async () => {
+  isLoadingOcr.value = true
+  try {
+    const data = await apiClient.get(`/projects/${projectId}/confirmation-data`) as {
+      images: Array<{
+        id: number
+        fields: Array<{ fieldName: string; fieldValue: string; normalizedValue?: string }>
+      }>
+      tenderPdfUrl?: string
+    }
+    // Set PDF preview URL from first page's image path (backend serves it as PDF)
+    if (data.images && data.images.length > 0) {
+      const firstPageId = data.images[0].id
+      pdfUrl.value = `/api/document-images/${firstPageId}/view`
+    } else if (data.tenderPdfUrl) {
+      pdfUrl.value = data.tenderPdfUrl
+    }
+    // Merge all fields from all images
+    const allFields = data.images.flatMap((img: { fields: Array<{ fieldName: string; fieldValue: string; normalizedValue?: string }> }) => img.fields)
+    formData.value = {
+      project_name: extractFieldValue(allFields, 'project_name') as string || '待确认项目',
+      owner_unit: extractFieldValue(allFields, 'owner_unit') as string || '未知',
+      budget_amount: extractFieldValue(allFields, 'budget_amount') as number || 0,
+      region: extractFieldValue(allFields, 'region') as string || '',
+      project_type: (extractFieldValue(allFields, 'project_type') as string) || 'service',
+      bid_open_date: (extractFieldValue(allFields, 'bid_open_date') as string) || '',
+      plan_code: extractFieldValue(allFields, 'plan_code') as string || '',
+      agency_project_code: extractFieldValue(allFields, 'agency_project_code') as string || '',
+    }
+  } catch (err) {
+    ElMessage.warning('无法加载OCR数据请手动填写')
+    console.error(err)
+  } finally {
+    isLoadingOcr.value = false
+  }
+})
+
+async function confirmAndProceed() {
+  // Validation: bid_open_date is required
+  if (!formData.value.bid_open_date) {
+    ElMessage.error('未填写提交投标文件截止时间')
+    return
+  }
   isConfirming.value = true
-  setTimeout(() => {
-    // Update project with confirmed data
-    Object.assign(project, formData, { status: 'parsed' })
-    projectStore.projects.push({ ...project })
+  try {
+    await apiClient.post(`/projects/${projectId}/confirm-parsing`, {
+      confirmations: [],
+      project_name: formData.value.project_name,
+      owner_unit: formData.value.owner_unit,
+      budget_amount: formData.value.budget_amount,
+      region: formData.value.region,
+      project_type: formData.value.project_type,
+      bid_open_date: formData.value.bid_open_date,
+      plan_code: formData.value.plan_code || undefined,
+      agency_project_code: formData.value.agency_project_code || undefined,
+    })
     ElMessage.success('项目立项成功！')
+    router.push(`/projects/${projectId}/evaluation`)
+  } catch (err) {
+    ElMessage.error('确认失败：' + (err instanceof Error ? err.message : String(err)))
+  } finally {
     isConfirming.value = false
-    router.push('/')
-  }, 800)
+  }
 }
 
 function goBack() {
@@ -140,19 +271,37 @@ function goBack() {
 .page-header {
   margin-bottom: 24px;
 }
-.pdf-placeholder {
-  width: 260px;
-  flex-shrink: 0;
+.pdf-preview-wrapper {
+  position: sticky;
+  top: 20px;
 }
 .pdf-card {
-  height: 100%;
-  min-height: 400px;
   border-radius: 12px;
+}
+.pdf-viewer {
+  height: calc(100vh - 220px);
+  min-height: 700px;
+  width: 100%;
+}
+.pdf-iframe {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
 }
 .form-card {
   border-radius: 12px;
 }
 .ocr-form :deep(.el-form-item__label) {
   font-weight: 500;
+  font-size: 13px;
+  margin-bottom: 2px !important;
+}
+.ocr-form :deep(.el-form-item) {
+  margin-bottom: 12px;
+}
+.ocr-form :deep(.el-input__wrapper),
+.ocr-form :deep(.el-select__wrapper) {
+  border-radius: 6px;
 }
 </style>

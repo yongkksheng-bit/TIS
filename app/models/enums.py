@@ -7,9 +7,11 @@ class ProjectStatus(str, enum.Enum):
     PARSED = "parsed"
     EVALUATING = "evaluating"
     EVALUATION_READY = "evaluation_ready"
+    PENDING_BOSS_APPROVAL = "pending_boss_approval"  # specialist submitted, awaiting boss
     APPROVED_BY_SPECIALIST = "approved_by_specialist"
     REJECTED_BY_SPECIALIST = "rejected_by_specialist"
     TERMINATED_BY_BOSS = "terminated_by_boss"
+    DISCARDED = "discarded"                           # specialist directly discarded
     GENERATING_DOCUMENTS = "generating_documents"
     AWAITING_PRICING = "awaiting_pricing"
     AWAITING_REVIEW = "awaiting_review"
@@ -102,6 +104,8 @@ class Recommendation(str, enum.Enum):
 class ApprovalAction(str, enum.Enum):
     SPECIALIST_WORTHY = "specialist_worthy"
     SPECIALIST_UNWORTHY = "specialist_unworthy"
+    SPECIALIST_DIRECT_EXECUTE = "specialist_direct_execute"   # bypass boss → generating_documents
+    SPECIALIST_TERMINATE = "specialist_terminate"             # direct termination
     BOSS_OVERRIDE_TERMINATE = "boss_override_terminate"
     BOSS_OVERRIDE_REVIVE = "boss_override_revive"
     BOSS_CONFIRM_SPECIALIST = "boss_confirm_specialist"

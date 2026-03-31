@@ -8,7 +8,7 @@ class OwnerProfileResult(BaseModel):
     """Result of owner profile lookup."""
 
     owner_name: str
-    region: str
+    region: Optional[str] = None
     relationship_level: RelationshipLevel
     cooperation_count: int
     preferred_styles: Optional[dict[str, Any]] = None

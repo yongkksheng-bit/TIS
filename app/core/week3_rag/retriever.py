@@ -92,7 +92,7 @@ class DocumentRetriever:
             WHERE is_deprecated = FALSE
               AND source_project_id = :project_id
               AND (:chunk_type IS NULL OR chunk_type = :chunk_type)
-            ORDER BY content_vector <=> :query::vector
+            ORDER BY content_vector::vector <=> CAST(:query AS vector)
             LIMIT :top_k
         """)
         results = self.db.execute(sql, {

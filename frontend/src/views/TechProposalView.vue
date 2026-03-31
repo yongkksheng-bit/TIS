@@ -108,6 +108,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useProjectStore } from '@/stores/projectStore'
+import { apiClient } from '@/api/client'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { MagicStick, RefreshRight, Check } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -133,20 +134,35 @@ const sections = ref([
   { id: 5, title: '项目团队', scoring_item: '2.5 人员配置', content: '', generated: false, children: [] },
 ])
 
-const MOCK_CONTENT: Record<string, string> = {
-  '项目理解': '本案为深圳市XX学校2026年食堂配送服务项目，服务期一年，覆盖全校师生约3200人。我司具备丰富的学校食堂配送经验，曾为XX学院、XX附中等15所学校提供同类服务，累计服务师生超过50万人次...',
-  '服务方案': '一、配送范围：覆盖深圳市南山区全部街道办下属学校食堂...\n二、质量保障：所有食材实行"先检后送"制度，每批次附检测报告...\n三、配送时效：凌晨4点前送达，确保早餐新鲜...',
-  '质量管理': '我司已建立ISO9001:2015质量管理体系，设立专职QC小组...',
-  '应急预案': '针对食材安全、配送延误等风险，我司制定了完整的应急预案...',
-  '项目团队': '本项目拟派项目经理1名，专职配送员8名，质检员2名...',
-}
-
 const selectedSection = computed(() => sections.value.find(s => s.id === selectedSectionId.value))
 const canGenerate = computed(() => selectedSectionId.value !== null && !isGenerating.value)
 
-onMounted(() => {
+onMounted(async () => {
+  // Refresh project status from backend (in case changed via API approval)
+  await projectStore.fetchProjectById(projectId)
+
+  // Set generation mode from project
   if (currentProject.value?.generation_mode === 'guided') {
     generationMode.value = 'guided'
+  }
+  // Load existing generated sections from backend
+  try {
+    const data = await apiClient.get(`/v1/projects/${projectId}/sections`) as {
+      data: {
+        sections: Array<{ section_name: string; content: string; mode: string; generation_timestamp: string }>
+      }
+    }
+    if (data.data?.sections) {
+      for (const sec of data.data.sections) {
+        const section = sections.value.find(s => s.title === sec.section_name)
+        if (section) {
+          section.content = sec.content
+          section.generated = true
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load existing sections:', err)
   }
 })
 
@@ -157,20 +173,27 @@ function handleSectionClick(data: typeof sections.value[0]) {
 async function generateSection() {
   if (!selectedSection.value) return
   isGenerating.value = true
-  await new Promise(r => setTimeout(r, 1500))
-  selectedSection.value.content = MOCK_CONTENT[selectedSection.value.title] || `【${selectedSection.value.title}】AI生成内容占位...\n\n本章节针对评分标准「${selectedSection.value.scoring_item}」进行了详细阐述...`
-  selectedSection.value.generated = true
-  isGenerating.value = false
-  ElMessage.success(`${selectedSection.value.title} 生成完成`)
+  try {
+    const insiderNotes = generationMode.value === 'guided' ? (currentProject.value?.boss_insider_notes || '') : undefined
+    const result = await apiClient.post(`/v1/projects/${projectId}/generate-section`, {
+      section_name: selectedSection.value.title,
+      generation_mode: generationMode.value,
+      insider_notes: insiderNotes,
+      top_k: generationMode.value === 'auto' ? 5 : 3,
+    }) as { data: { content: string; generation_timestamp: string } }
+    selectedSection.value.content = result.data.content
+    selectedSection.value.generated = true
+    ElMessage.success(`${selectedSection.value.title} 生成完成`)
+  } catch (err) {
+    ElMessage.error('生成失败：' + (err instanceof Error ? err.message : String(err)))
+  } finally {
+    isGenerating.value = false
+  }
 }
 
 async function regenerateSection() {
-  if (!selectedSection.value) return
-  isGenerating.value = true
-  await new Promise(r => setTimeout(r, 1500))
-  selectedSection.value.content = MOCK_CONTENT[selectedSection.value.title] + '\n\n[重新生成内容]'
-  isGenerating.value = false
-  ElMessage.success(`${selectedSection.value.title} 重新生成完成`)
+  // Same as generateSection — calls the same endpoint
+  await generateSection()
 }
 
 function confirmAllSections() {

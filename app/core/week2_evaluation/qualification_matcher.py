@@ -61,7 +61,7 @@ class QualificationMatcher:
                 if is_mandatory:
                     fatal_missing.append({
                         'cert_code': cert_code,
-                        'cert_name': std_cert.cert_full_name if std_cert else cert_code,
+                        'cert_name': req.get('cert_name') or (std_cert.cert_full_name if std_cert else cert_code),
                         'reason': 'missing',
                         'severity': 'fatal'
                     })
@@ -76,7 +76,7 @@ class QualificationMatcher:
                 if is_mandatory:
                     fatal_missing.append({
                         'cert_code': cert_code,
-                        'cert_name': std_cert.cert_full_name if std_cert else cert_code,
+                        'cert_name': req.get('cert_name') or (std_cert.cert_full_name if std_cert else cert_code),
                         'reason': 'wrong_cert_blocked_by_exclude',
                         'severity': 'fatal'
                     })
@@ -94,7 +94,7 @@ class QualificationMatcher:
                 if is_mandatory:
                     fatal_missing.append({
                         'cert_code': cert_code,
-                        'cert_name': std_cert.cert_full_name if std_cert else cert_code,
+                        'cert_name': req.get('cert_name') or (std_cert.cert_full_name if std_cert else cert_code),
                         'reason': 'expired',
                         'valid_until': validity.get('valid_until'),
                         'severity': 'fatal'
@@ -105,7 +105,7 @@ class QualificationMatcher:
                 # Add to matched but also to warning (handled in Week 2 report)
                 matched_list.append({
                     'cert_code': cert_code,
-                    'cert_name': std_cert.cert_full_name if std_cert else cert_code,
+                    'cert_name': req.get('cert_name') or (std_cert.cert_full_name if std_cert else cert_code),
                     'valid_until': validity.get('valid_until'),
                     'status': 'valid_but_expiring_soon',
                     'evidence_image_id': matched_extraction.image_id
@@ -113,7 +113,7 @@ class QualificationMatcher:
             else:
                 matched_list.append({
                     'cert_code': cert_code,
-                    'cert_name': std_cert.cert_full_name if std_cert else cert_code,
+                    'cert_name': req.get('cert_name') or (std_cert.cert_full_name if std_cert else cert_code),
                     'valid_until': validity.get('valid_until'),
                     'status': 'valid',
                     'evidence_image_id': matched_extraction.image_id
@@ -121,18 +121,47 @@ class QualificationMatcher:
 
         # Calculate score
         total_mandatory = len([r for r in tender_reqs if r.get('is_mandatory')])
+        total_optional = len([r for r in tender_reqs if not r.get('is_mandatory')])
         matched_mandatory = total_mandatory - len([m for m in fatal_missing if m['reason'] == 'missing'])
-        score = int((matched_mandatory / total_mandatory) * 100) if total_mandatory > 0 else 100
+        # optional matched = total optional - optional missing
+        matched_optional = total_optional - len(optional_missing)
+
+        # Detect extraction failure: no requirements AND tender_reqs is empty
+        # OR: tender_reqs has items but NONE were matched (all missing → OCR likely failed)
+        if not tender_reqs:
+            # Document was never parsed → critical extraction failure
+            score = 0
+            fatal_missing.append({
+                'cert_code': 'SYSTEM_EXTRACTION_FAILED',
+                'cert_name': '【系统】标书未解析，资质要求提取失败',
+                'reason': 'qualification_requirements_not_extracted',
+                'severity': 'fatal'
+            })
+        elif total_mandatory == 0 and matched_optional == 0 and total_optional > 0:
+            # Optional requirements exist but NONE were matched → extraction failure for certs
+            score = 0
+            fatal_missing.append({
+                'cert_code': 'SYSTEM_CERT_EXTRACTION_FAILED',
+                'cert_name': '【系统】未从OCR提取到任何有效证书',
+                'reason': 'cert_extraction_failed',
+                'severity': 'fatal'
+            })
+        elif total_mandatory == 0:
+            # No mandatory requirements and at least some matched optional
+            score = int((matched_optional / total_optional) * 100) if total_optional > 0 else 100
+        else:
+            score = int((matched_mandatory / total_mandatory) * 100) if total_mandatory > 0 else 0
 
         # Determine pass/fail
-        has_fatal = any(m['reason'] in ['missing', 'expired', 'wrong_cert_blocked_by_exclude'] for m in fatal_missing)
+        has_fatal = any(m['reason'] in ['missing', 'expired', 'wrong_cert_blocked_by_exclude', 'qualification_requirements_not_extracted', 'cert_extraction_failed'] for m in fatal_missing)
 
         return {
             'qualification_match_score': score,
             'missing_mandatory_certs': fatal_missing,
             'missing_optional_certs': optional_missing,
             'matched_certs': matched_list,
-            'is_qualification_pass': not has_fatal
+            'is_qualification_pass': not has_fatal,
+            'is_extraction_valid': bool(tender_reqs)
         }
 
     def _get_validated_cert_extractions(self) -> list:

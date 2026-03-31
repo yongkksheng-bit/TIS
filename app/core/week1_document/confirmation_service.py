@@ -173,7 +173,7 @@ class ConfirmationService:
 
         project = self.db.query(Project).get(project_id)
         if project:
-            project.status = 'parsed'
+            project.status = 'evaluating'
         self.db.commit()
 
         return {'success': True}

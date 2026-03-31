@@ -61,3 +61,6 @@ Thumbs.db
 
 # Node (for future frontend)
 node_modules/
+data/
+data/huggingface_cache/
+ai_service/__pycache__/

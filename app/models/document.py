@@ -28,6 +28,10 @@ class TenderDocument(Base, TimestampMixin):
     parsed_by_ai: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     confirmed_by_human: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # Precise tender document identifiers (extracted via regex from PDF)
+    plan_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)        # 采购计划编号
+    agency_project_code: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 采购项目编号
+
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="tender_documents")
 

@@ -1,11 +1,19 @@
 from pydantic import BaseModel
 from typing import Optional
 
+
 class SpecialistApprovalRequest(BaseModel):
-    action: str  # 'approve' or 'reject'
-    generation_mode: str  # 'AUTO' or 'GUIDED' (required per Option-A spec)
+    # Actions:
+    #   specialist: 'submit_to_boss' | 'direct_execute' | 'terminate'
+    #   boss:        'approve' | 'reject' (from pending_boss_approval or post-specialist states)
+    action: str
+    generation_mode: str  # 'AUTO' or 'GUIDED'
     user_id: int
+    role: Optional[str] = None  # 'specialist' or 'boss'
     override_reason: Optional[str] = None  # required if approving with fatal risks
+    # Relationship info (required for boss approval)
+    relationship_flag: Optional[bool] = False
+    differentiation_guidance: Optional[str] = None
 
 class SpecialistApprovalResponse(BaseModel):
     status: str

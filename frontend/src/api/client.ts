@@ -6,12 +6,12 @@ const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 export const apiClient = axios.create({
   baseURL,
-  timeout: 30000,
+  timeout: 120000, // 120s — accommodates large PDF chunking + GPU embedding on RTX 3060
 })
 
 // Add request interceptor to convert camelCase -> snake_case
 apiClient.interceptors.request.use((config) => {
-  if (config.data && typeof config.data === 'object') {
+  if (config.data && typeof config.data === 'object' && !(config.data instanceof FormData) && !(config.data instanceof File)) {
     config.data = toSnakeCase(config.data)
   }
   return config

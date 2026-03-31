@@ -19,8 +19,8 @@ class OcrExtraction(Base, TimestampMixin):
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
     )
 
-    # OCR识别字段
-    field_name: Mapped[OcrFieldName] = mapped_column(String(50), nullable=False)
+    # OCR识别字段（允许任意字符串，如 'project_name', 'owner_unit', 'budget_amount'）
+    field_name: Mapped[str] = mapped_column(String(50), nullable=False)
     field_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     confidence_score: Mapped[Optional[float]] = mapped_column(Numeric(4, 3), nullable=True)
 

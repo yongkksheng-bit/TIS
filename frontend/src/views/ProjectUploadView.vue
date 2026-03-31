@@ -60,8 +60,6 @@
       </el-card>
     </div>
 
-    <!-- Rebid Alert Dialog -->
-    <RebidAlertDialog v-model="showRebidAlert" :alert-data="rebidAlertData" />
   </div>
 </template>
 
@@ -69,9 +67,9 @@
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useProjectStore } from '@/stores/projectStore'
+import { apiClient } from '@/api/client'
 import { DocumentAdd, Cpu, Loading } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import RebidAlertDialog, { type RebidAlertData } from '@/components/RebidAlertDialog.vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const router = useRouter()
 const route = useRoute()
@@ -81,9 +79,6 @@ const selectedFile = ref<File | null>(null)
 const isParsing = ref(false)
 const parsingProgress = ref(0)
 const isDragover = ref(false)
-const showRebidAlert = ref(false)
-// Historical rebid data — populated by API after file parsing detects a rebid scenario
-const rebidAlertData = ref<RebidAlertData | null>(null)
 
 function handleFileChange(file: unknown) {
   const f = (file as { raw: File }).raw
@@ -94,25 +89,88 @@ function handleFileChange(file: unknown) {
   }
 }
 
-function startParsing() {
+async function startParsing() {
   if (!selectedFile.value) return
   isParsing.value = true
   parsingProgress.value = 0
 
-  // Mock progress simulation
-  const interval = setInterval(() => {
-    parsingProgress.value += Math.floor(Math.random() * 20) + 10
-    if (parsingProgress.value >= 100) {
-      parsingProgress.value = 100
-      clearInterval(interval)
-      setTimeout(() => {
-        isParsing.value = false
-        // Navigate to confirmation page
-        const projectId = projectStore.projects.length > 0 ? projectStore.projects[0].id + 1 : 1
-        router.push(`/projects/${projectId}/confirm`)
-      }, 300)
+  let interval: ReturnType<typeof setInterval> | null = null
+  try {
+    // Step 1: Create project via API
+    const createRes = await apiClient.post<{ id: number }>('/projects', {
+      project_name: '待解析项目',
+      owner_unit: '未知',
+    })
+    const projectId = (createRes as unknown as { id: number }).id
+
+    // Step 2: Upload PDF with progress simulation
+    const formData = new FormData()
+    formData.append('file', selectedFile.value)
+
+    // Simulate progress while uploading
+    interval = setInterval(() => {
+      parsingProgress.value = Math.min(parsingProgress.value + Math.floor(Math.random() * 15) + 5, 85)
+    }, 300)
+
+    await apiClient.post(`/projects/${projectId}/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+
+    if (interval) clearInterval(interval)
+    parsingProgress.value = 100
+
+    setTimeout(() => {
+      isParsing.value = false
+      router.push(`/projects/${projectId}/confirm`)
+    }, 300)
+  } catch (err) {
+    isParsing.value = false
+    if (interval) clearInterval(interval)
+    const errDetail = (err as any)?.response?.data?.detail
+    if (errDetail?.code === 'DUPLICATE_TENDER') {
+      const existingName = errDetail?.existing_project_name || '未知'
+      const dupCode = errDetail?.duplicate_code || ''
+      const dupMsg = dupCode ? ` (${dupCode})` : ''
+      await ElMessageBox.confirm(
+        `检测到系统已存在该项目：【${existingName}】${dupMsg}。\n\n如果这是流标后的重新招标，请点击【确认作为二次投标】放行上传。`,
+        '项目重复 — 二次投标确认',
+        {
+          confirmButtonText: '确认作为二次投标',
+          cancelButtonText: '取消',
+          type: 'warning',
+          center: true,
+        }
+      ).then(async () => {
+        // User confirmed — retry with force_retender=true
+        isParsing.value = true
+        try {
+          const createRes = await apiClient.post<{ id: number }>('/projects', {
+            project_name: '待解析项目',
+            owner_unit: '未知',
+            force_retender: true,
+            parent_id: errDetail?.existing_project_id || undefined,
+          })
+          const retryProjectId = (createRes as unknown as { id: number }).id
+          const formDataRetry = new FormData()
+          formDataRetry.append('file', selectedFile.value!)
+          await apiClient.post(`/projects/${retryProjectId}/upload`, formDataRetry, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          })
+          ElMessage.success('二次投标项目创建成功！')
+          router.push(`/projects/${retryProjectId}/confirm`)
+        } catch (retryErr) {
+          ElMessage.error('二次投标创建失败：' + (retryErr instanceof Error ? retryErr.message : String(retryErr)))
+        } finally {
+          isParsing.value = false
+        }
+      }).catch(() => {
+        // User cancelled — do nothing
+      })
+    } else {
+      ElMessage.error('文件解析失败，请重试')
     }
-  }, 200)
+    console.error(err)
+  }
 }
 
 function goBack() {
@@ -120,10 +178,6 @@ function goBack() {
 }
 
 onMounted(() => {
-  // Only show rebid alert if historical data has been detected (from API after parsing)
-  if (rebidAlertData.value !== null) {
-    showRebidAlert.value = true
-  }
 })
 </script>
 

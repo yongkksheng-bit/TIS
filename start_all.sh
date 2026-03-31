@@ -1,16 +1,14 @@
 #!/bin/bash
-echo "Starting TIS Backend on port 8000..."
-cd "$(dirname "$0")" && python -m uvicorn app.main:app --reload --port 8000 &
-BACKEND_PID=$!
+# ============================================
+# TIS - Docker Compose Mode (recommended)
+# ============================================
+echo "Starting TIS with Docker Compose..."
+cd "$(dirname "$0")"
 
-echo "Starting TIS Frontend on port 3000..."
-cd "$(dirname "$0")/frontend" && npm run dev &
-FRONTEND_PID=$!
+docker compose up -d
 
 echo ""
-echo "Backend: http://localhost:8000"
 echo "Frontend: http://localhost:3000"
-echo "Press Ctrl+C to stop both"
-
-trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null" EXIT
-wait
+echo "Backend:  http://localhost:8000"
+echo "API Docs: http://localhost:8000/docs"
+echo "Press 'docker compose down' to stop"

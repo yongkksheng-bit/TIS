@@ -11,16 +11,19 @@ from app.schemas.week3 import (
     ChunkInfo,
     GenerateSectionRequest,
     GeneratedSectionResponse,
+    GetSectionsResponse,
+    SectionData,
 )
 from app.schemas.common import ResponseWrapper
 from app.core.week3_rag.text_chunker import DocumentChunker
 from app.core.week3_rag.embedder import create_embedder, MockEmbedder
 from app.core.week3_rag.retriever import DocumentRetriever
 from app.core.week3_rag.prompt_builder import TechProposalPromptBuilder
-from app.core.week3_rag.llm_mock import MockDeepSeekLLM
+from app.core.week3_rag.llm_mock import get_llm
 from app.core.week3_rag.generator import TechProposalGenerator
 from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.project import Project
+from app.models.tech_proposal import TechProposalTask
 
 
 router = APIRouter(prefix="/api/v1/projects", tags=["rag"])
@@ -107,7 +110,7 @@ def generate_section(
     # Build components
     embedder = create_embedder()
     retriever = DocumentRetriever(db, embedder)
-    llm = MockDeepSeekLLM()
+    llm = get_llm()  # respects USE_MOCK_LLM env var
     prompt_builder = TechProposalPromptBuilder()
     generator = TechProposalGenerator(
         db=db,
@@ -141,4 +144,43 @@ def generate_section(
         token_usage=result.token_usage or {},
         source_chunk_count=len(result.source_chunks),
         generation_timestamp=result.generation_timestamp,
+    ).model_dump())
+
+
+# ─── GET /api/v1/projects/{project_id}/sections ─────────────────────────────────
+
+@router.get("/{project_id}/sections")
+def get_sections(project_id: int, db: Session = Depends(get_db)):
+    """
+    Retrieve all previously generated sections for a project.
+    Returns sections from the latest TechProposalTask that have generated content.
+    """
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Get the latest tech proposal task for this project
+    task = db.query(TechProposalTask).filter(
+        TechProposalTask.project_id == project_id
+    ).order_by(TechProposalTask.id.desc()).first()
+
+    if not task or not task.generated_content:
+        return ResponseWrapper(data=GetSectionsResponse(
+            project_id=project_id,
+            sections=[],
+        ).model_dump())
+
+    # generated_content is a dict: { section_name: { content, mode, timestamp } }
+    sections = []
+    for section_name, data in task.generated_content.items():
+        sections.append(SectionData(
+            section_name=section_name,
+            content=data.get('content', ''),
+            mode=data.get('mode', task.generation_mode),
+            generation_timestamp=data.get('timestamp', ''),
+        ))
+
+    return ResponseWrapper(data=GetSectionsResponse(
+        project_id=project_id,
+        sections=sections,
     ).model_dump())

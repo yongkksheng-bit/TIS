@@ -39,6 +39,10 @@ COPY --chown=appuser:appuser alembic/versions /app/alembic/versions
 COPY --chown=appuser:appuser app/ /app/app/
 COPY --chown=appuser:appuser requirements.txt /app/requirements.txt
 
+# Ensure /tmp/tis_uploads writable by appuser via chown (named volume mounts over it)
+# chown as root here since volume mount will override dir ownership at runtime
+RUN mkdir -p /tmp/tis_uploads && chown appuser:appuser /tmp/tis_uploads
+
 # Set environment
 ENV PATH=/home/appuser/.local/bin:$PATH
 ENV PYTHONUNBUFFERED=1
@@ -54,4 +58,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
 EXPOSE 8000
 
 # Run migrations then start server
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "mkdir -p /tmp/tis_uploads && alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]

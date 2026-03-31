@@ -44,6 +44,7 @@
         :project="project"
         class="cursor-pointer"
         @click="handleCardClick(project)"
+        @delete="handleDelete"
       />
     </div>
 
@@ -53,14 +54,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '@/stores/projectStore'
-import ProjectCard from '@/components/ProjectCard.vue'
+import { useAuthStore } from '@/stores/authStore'
+import ProjectCard, { type Project } from '@/components/ProjectCard.vue'
 import { Plus } from '@element-plus/icons-vue'
+import { ElMessageBox, ElMessage } from 'element-plus'
+import { apiClient } from '@/api/client'
 
 const router = useRouter()
 const projectStore = useProjectStore()
+const authStore = useAuthStore()
 const activeTab = ref('all')
 
 const statusTabs = [
@@ -70,9 +75,10 @@ const statusTabs = [
   { label: '待处理', value: 'pending' },
 ]
 
-const IN_PROGRESS_STATUSES = ['parsing', 'parsed', 'evaluating', 'evaluation_ready', 'generating_documents', 'awaiting_pricing', 'awaiting_review']
+const IN_PROGRESS_STATUSES = ['parsing', 'parsed', 'evaluating', 'evaluation_ready', 'generating_documents', 'awaiting_pricing', 'awaiting_review', 'pending_boss_approval']
 const COMPLETED_STATUSES = ['completed', 'worthy']
-const PENDING_STATUSES = ['uploaded', 'unworthy', 'terminated_by_boss', 'abandoned']
+// Boss waiting list: projects approved by specialist and awaiting boss decision
+const PENDING_STATUSES = ['uploaded', 'unworthy', 'terminated_by_boss', 'abandoned', 'evaluation_ready', 'approved_by_specialist', 'pending_boss_approval', 'discarded']
 
 const filteredProjects = computed(() => {
   if (activeTab.value === 'all') return projectStore.projects
@@ -94,6 +100,44 @@ function handleCardClick(project: typeof projectStore.projects[0]) {
   projectStore.setCurrentProject(project)
   router.push(`/projects/${project.id}/upload`)
 }
+
+// Debounce map — prevents rapid successive delete clicks
+const deleteLock = new Set<number>()
+
+async function handleDelete(project: Project) {
+  if (deleteLock.has(project.id)) return  // Already deleting
+  deleteLock.add(project.id)
+
+  try {
+    await ElMessageBox.confirm(
+      `确定移入回收站吗？移入后您可以重新上传同名项目。`,
+      '移入回收站',
+      {
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        center: true,
+      }
+    )
+    await apiClient.delete(`/projects/${project.id}`)
+    ElMessage.success('已移入回收站，可重新上传同名项目')
+    // Refresh list
+    await projectStore.fetchProjects(authStore.currentUser.role)
+  } catch {
+    // User cancelled or API error — silently ignore
+  } finally {
+    deleteLock.delete(project.id)
+  }
+}
+
+onMounted(() => {
+  projectStore.fetchProjects(authStore.currentUser.role)
+})
+
+// Re-fetch when role changes (e.g., boss reviewing as different user)
+watch(() => authStore.currentUser.role, (newRole) => {
+  projectStore.fetchProjects(newRole)
+})
 </script>
 
 <style scoped>

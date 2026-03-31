@@ -18,6 +18,16 @@ def upgrade() -> None:
     # Enable vector extension for future embedding support
     op.execute('CREATE EXTENSION IF NOT EXISTS vector;')
 
+    # Create users table (required by Project.created_by FK)
+    op.create_table(
+        'users',
+        sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column('username', sa.String(100), unique=True, nullable=False),
+        sa.Column('email', sa.String(255), nullable=True),
+        sa.Column('created_at', sa.DateTime(), server_default=sa.func.now(), nullable=True),
+        sa.Column('updated_at', sa.DateTime(), server_default=sa.func.now(), onupdate=sa.func.now(), nullable=True),
+    )
+
     # Create projects table
     op.create_table(
         'projects',

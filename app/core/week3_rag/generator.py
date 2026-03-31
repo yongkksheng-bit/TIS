@@ -142,12 +142,15 @@ class TechProposalGenerator:
                 mode=generation_mode,
                 insider_notes=[insider_notes] if insider_notes else None,
                 temperature=temperature,
+                system_prompt=system_prompt,
             )
 
             content = response.content
             token_usage = response.usage or {}
 
         except Exception as e:
+            # Rollback the aborted transaction before logging
+            self.db.rollback()
             # Log the failed attempt before re-raising
             self._create_generation_log(
                 task_id=None,

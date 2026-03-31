@@ -8,6 +8,16 @@
       class="absolute left-0 top-0 bottom-0 w-1"
       :class="statusStripeClass"
     />
+    <!-- Delete button (top-right, stops card click) -->
+    <el-button
+      class="delete-btn"
+      type="danger"
+      :icon="Delete"
+      circle
+      size="small"
+      text
+      @click.stop="emit('delete', project)"
+    />
     <div class="pl-3">
       <h3 class="text-base font-semibold text-gray-800 mb-2 leading-snug">{{ project.project_name }}</h3>
       <div class="mb-3">
@@ -37,9 +47,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import StatusBadge from './StatusBadge.vue'
-import { OfficeBuilding, Location } from '@element-plus/icons-vue'
+import { OfficeBuilding, Location, Delete } from '@element-plus/icons-vue'
 
-interface Project {
+export interface Project {
   id: number
   project_name: string
   owner_unit: string
@@ -47,6 +57,7 @@ interface Project {
   budget_amount: number
   status: string
   created_at?: string
+  // Additional fields may exist in store models but are not rendered in the card
 }
 
 // Status-based left stripe colors for enterprise UX
@@ -82,9 +93,23 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'click', project: Project): void
+  (e: 'delete', project: Project): void
 }>()
 
 const statusStripeClass = computed(() => {
   return STATUS_STRIPE_MAP[props.project.status] || 'bg-gray-300'
 })
 </script>
+
+<style scoped>
+.delete-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.project-card:hover .delete-btn {
+  opacity: 1;
+}
+</style>
