@@ -518,6 +518,7 @@ class HistoricalChunker:
                             "scoring_dimension_tags": seg.dimension_tags,
                             "has_table": False,       # Patch 3
                             "block_type": "paragraph",
+                            "token_count": self._estimate_tokens(sub.text),  # w015 field
                         })
                         chunk_buffer[sub.chunk_index] = sub
 

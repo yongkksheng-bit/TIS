@@ -121,6 +121,7 @@ class ChunkLoader:
                         "region_tags": metadata.get("region_tags"),
                         "project_type_tags": metadata.get("project_type_tags"),
                         "is_price_sensitive": metadata.get("is_price_sensitive", False),
+                        "token_count": metadata.get("token_count", 0),   # w015 field
                         "is_deprecated": False,
                     }
                 )
@@ -213,6 +214,9 @@ class ChunkLoader:
         if is_price_sensitive:
             metadata["is_price_sensitive"] = True
 
+        # w015 token_count: prefer caller's explicit value, else from chunk metadata
+        token_count = metadata.get("token_count", 0)
+
         # Add high-level fields
         metadata["win_signal"] = win_signal
         metadata["source_type"] = source_type
@@ -234,6 +238,7 @@ class ChunkLoader:
             "region_tags": region_tags,
             "project_type_tags": project_type_tags,
             "is_price_sensitive": is_price_sensitive,
+            "token_count": token_count,     # w015 field
             "is_deprecated": False,
         }
 
