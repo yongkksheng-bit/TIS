@@ -113,12 +113,13 @@ class HistoricalBid(Base, TimestampMixin):
     bid_file_path: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     is_postmortem_completed: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # ── Relationships ───────────────────────────────────────────────
+    # ── Relationships ────────────────────────────────────────────────
     tender: Mapped["HistoricalTender"] = relationship(
         "HistoricalTender", back_populates="bids"
     )
     postmortem: Mapped[Optional["InternalPostmortem"]] = relationship(
-        "InternalPostmortem", back_populates="bid", foreign_keys=[internal_postmortem_id]
+        "InternalPostmortem",
+        foreign_keys=[internal_postmortem_id],
     )
 
     # ── Indexes ──────────────────────────────────────────────────────
@@ -178,9 +179,7 @@ class InternalPostmortem(Base, TimestampMixin):
     # ── Relationships ────────────────────────────────────────────────
     bid: Mapped["HistoricalBid"] = relationship(
         "HistoricalBid",
-        back_populates="postmortem",
         foreign_keys=[historical_bid_id],
-        overlaps="internal_postmortem_id"
     )
 
     # ── Indexes ──────────────────────────────────────────────────────
