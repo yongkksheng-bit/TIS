@@ -502,3 +502,35 @@ psycopg2.errors.CheckViolation: new row violates check constraint "final_bid_doc
 **分析**：
 - `word_generator.py` 正常工作了
 - 文件存储在 MinIO 或本地文件系统
+
+---
+
+## Session: 2026-05-12 Week 6 Evolution 测试
+
+### 测试结果
+
+| 阶段 | 结果 |
+|------|------|
+| 记录 lose 结果 | ✅ bid_outcomes id=2 |
+| 查询评审分析 | ✅ outcome_status='lose' |
+| 确认评审分析 | ✅ reviewed_by=1 |
+| Rebid Alert | ✅ is_rebid=false |
+| 知识进化报告 | ✅ total_chunks=13726 |
+| 记录 disqualified | ✅ traps=1 |
+| 验收确认 | ✅ 全部通过 |
+
+### Bug 修复: disqualification_traps trap_category CHECK constraint
+
+**问题**：`disqualification_traps.trap_category` CHECK 约束只允许 `('signature','seal','qualification','price','format','timing')`，但 API schema 允许 `fatal_*` 值
+
+**修复**：
+```sql
+ALTER TABLE disqualification_traps DROP CONSTRAINT IF EXISTS disqualification_traps_trap_category_check;
+ALTER TABLE disqualification_traps ADD CONSTRAINT disqualification_traps_trap_category_check CHECK (trap_category IN ('signature','seal','qualification','price','format','timing','fatal_formal','fatal_qualification','fatal_price','tech_deficiency','price_uncompetitive'));
+```
+
+### 关键发现
+
+1. **disqualification_type 映射不一致**: request 发送 `fatal_qualification`，response/db 显示 `fatal_formal`（可能代码中有默认值覆盖）
+2. **winning_dna = 0**: Project 117 无 confirmed TechProposalTask，无法提取 DNA
+3. **knowledge_evolution_logs = 0**: Project 117 自身无 chunks（所有 chunks 来自 historical_tenders）

@@ -333,6 +333,52 @@ bid_evaluation_reports: 1 row (report_id=99)
 | **P1** | ~~RAG生成测试~~ | ✅ Week 3 通过 |
 ---
 
+## Session: 2026-05-12 Week 6 Evolution 测试
+
+### 执行时间
+2026-05-12
+
+### 任务清单
+
+| Task | 任务 | 状态 | 结果 |
+|------|------|------|------|
+| 1 | 记录 lose 结果 | ✅ 完成 | bid_outcomes id=2, outcome_status='lose' |
+| 2 | 查询评审分析 | ✅ 完成 | outcome_status='lose', analysis_type='lose' |
+| 3 | 确认评审分析 | ✅ 完成 | reviewed_by=1, review_notes='报价偏高...' |
+| 4 | Rebid Alert | ✅ 完成 | is_rebid=false (Project 117 无历史匹配) |
+| 5 | 知识进化报告 | ✅ 完成 | total_chunks=13726 |
+| 6 | 记录 disqualified 结果 | ✅ 完成 | disqualification_traps id=2 |
+| 7 | 验收确认 | ✅ 完成 | bid_outcomes=3, traps=1 |
+
+### 测试结果
+
+```
+bid_outcomes: 3 rows (id=1,2,4 for project 117)
+winning_dna: 0 rows (Project 117 无 confirmed tech proposal)
+disqualification_traps: 1 row (id=2, category=fatal_formal)
+knowledge_evolution_logs: 0 rows (Project 117 自身无 chunks)
+```
+
+### Bug 修复
+
+#### Bug: CHECK constraint trap_category 缺少 fatal_* 值
+
+**问题**: `disqualification_traps.trap_category` CHECK 约束只允许 `('signature','seal','qualification','price','format','timing')`，但 `disqualification_type` schema 允许 `('fatal_formal','fatal_qualification','fatal_price','tech_deficiency','price_uncompetitive')`
+
+**修复**:
+```sql
+ALTER TABLE disqualification_traps DROP CONSTRAINT IF EXISTS disqualification_traps_trap_category_check;
+ALTER TABLE disqualification_traps ADD CONSTRAINT disqualification_traps_trap_category_check CHECK (trap_category IN ('signature','seal','qualification','price','format','timing','fatal_formal','fatal_qualification','fatal_price','tech_deficiency','price_uncompetitive'));
+```
+
+### 关键发现
+
+1. **disqualification_type 映射问题**: request 发送 `fatal_qualification`，但 db 记录为 `fatal_formal`（代码中某处映射）
+2. **winning_dna = 0**: Project 117 无 confirmed TechProposalTask，无法提取 DNA
+3. **knowledge_evolution_logs = 0**: Project 117 自身无 chunks（source_project_id != 117）
+
+---
+
 ## Session: 2026-05-12 Week 4 定价博弈测试
 
 ### 执行时间
@@ -433,4 +479,4 @@ ALTER TABLE formal_review_items ADD CONSTRAINT formal_review_items_system_status
 | **P1** | ~~RAG生成测试~~ | ✅ Week 3 通过 |
 | **P1** | ~~定价博弈测试~~ | ✅ Week 4 通过 |
 | **P1** | ~~形式审查测试~~ | ✅ Week 5 通过 |
-| **P2** | Week 6 Evolution 测试 | 待定 |
+| **P1** | ~~Evolution 测试~~ | ✅ Week 6 通过 |

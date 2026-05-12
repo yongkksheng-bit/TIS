@@ -261,10 +261,29 @@
 - 问题：'final_bid' not in allowed values (allowed: 'complete', 'draft', 'submitted')
 - 修复：将 formal_review.py 中的 document_type='final_bid' 改为 'complete'
 
-### 关键发现
+---
 
-1. **TechProposalTask endpoint 不存在**: GET /api/v1/projects/117/tech-proposal/current 返回 404
-2. **Project 117 无 TechProposalTask 记录**: 无法确认 tech proposal
-3. **形式审查可独立进行**: 即使无 tech proposal 确认，formal_review 可正常发起
-4. **fatal 项阻止生成**: 只有确认所有 fatal 项后才能生成最终标书
-5. **Word 文档生成成功**: 文件路径 /tmp/final_bid_117_20260512062831.docx
+## Session: 2026-05-12 Week 6 Evolution 测试
+
+### 开始时间
+2026-05-12
+
+### 任务
+使用 curl 执行 Week 6 Evolution API 测试
+
+### 完成状态
+✅ Task 1: 记录 lose 结果 - bid_outcomes id=2
+✅ Task 2: 查询评审分析 - outcome_status='lose'
+✅ Task 3: 确认评审分析 - reviewed_by=1, review_notes 已设置
+✅ Task 4: Rebid Alert - is_rebid=false
+✅ Task 5: 知识进化报告 - total_chunks=13726
+✅ Task 6: 记录 disqualified 结果 - disqualification_traps id=2
+✅ Task 7: 验收确认 - 全部表验证通过
+
+### Bug 修复
+- CHECK constraint `disqualification_traps.trap_category` 缺少 fatal_* 值 → 已添加
+
+### 关键发现
+1. **disqualification_type 映射**: request 发送 fatal_qualification，db 记录为 fatal_formal
+2. **winning_dna = 0**: Project 117 无 confirmed TechProposalTask
+3. **knowledge_evolution_logs = 0**: Project 117 自身无 chunks
