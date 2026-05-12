@@ -58,7 +58,6 @@ from scripts.seeding.utils.outcome_book import OutcomeBook
 
 from scripts.seeding.parsers.pdf_parser import PDFParser, PDFParseResult
 from scripts.seeding.parsers.docx_parser import DOCXParser, DOCXParseResult
-from scripts.seeding.chunkers.historical_chunker import HistoricalChunker
 from scripts.seeding.embedders.historical_embedder import HistoricalEmbeddingEngine
 from scripts.seeding.loaders.tender_loader import TenderLoader
 from scripts.seeding.loaders.bid_loader import BidLoader
@@ -185,22 +184,253 @@ def step_load_bid_and_chunks(
         Total number of knowledge_chunks written.
     """
     bid_loader = BidLoader()
-    chunk_loader = ChunkLoader(db, batch_size=cfg.batch_size)
+    # Phase 3: batch_size=1 forces immediate commit after each chunk
+    # This breaks the "data constipation" — progress is visible in real-time
+    chunk_loader = ChunkLoader(db, batch_size=1)
 
     # ── V3 HistoricalChunker with LLM insights ───────────────────────────
-    deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    # The baked Docker image has stale code. We comprehensively patch the baked
+    # llm_factory module IN-PLACE before HistoricalChunker imports it.
+    import re as _re
+    import json as _json
+    import logging as _logging
+    import requests as _requests
+    import time as _time
+    from tenacity import Retrying, RetryError, stop_after_attempt, wait_exponential
+
+    _logger = _logging.getLogger(__name__)
+
+    # ── Patch 1: MINIMAX_CONFIG ──────────────────────────────────────────────
+    import sys as _sys
+    _sys.path.insert(0, "/app")
+    from app.core import llm_factory as _lf
+    _lf.MINIMAX_CONFIG.update({
+        "model": "MiniMax-M2.7",
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "max_tokens": 2048,
+    })
+
+    # ── Patch 2: Physical JSON extraction (strips <think> tags FIRST) ────────
+    _JSON_RE = _re.compile(r"\{.*\}", _re.DOTALL)
+    _THINKING_RE = _re.compile(r"<think>[\s\S]*?</think>", _re.MULTILINE)
+
+    def _extract_json(raw_text):
+        """Extract pure JSON: strip <think> tags, then extract first {...} block."""
+        text = raw_text.strip()
+        # Step 1: Physically remove ALL <thinking> blocks (M2.7 multi-block output)
+        text = _THINKING_RE.sub("", text)
+        try:
+            _json.loads(text)
+            return text
+        except _json.JSONDecodeError:
+            m = _JSON_RE.search(text)
+            return m.group(0) if m else text
+
+    # ── Patch 3: tenacity-wrapped _call_minimax ───────────────────────────────
+    def _call_minimax_patched(messages, api_key, model, base_url,
+                              temperature=1.0, top_p=0.95, max_tokens=2048):
+        url = f"{base_url.rstrip('/')}/v1/messages"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01",
+        }
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "top_p": top_p,
+            "max_tokens": max_tokens,
+        }
+        resp = _requests.post(url, headers=headers, json=payload, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+        content_blocks = data.get("content", [])
+        text = ""
+        for block in content_blocks:
+            if isinstance(block, dict):
+                # Prefer typed blocks (M2.7 uses {"type": "text", "text": "..."})
+                if block.get("type") == "text" and "text" in block:
+                    text = block.get("text", "")
+                    break
+                # Fallback: flat format with only "text" key (no "type" field)
+                elif "text" in block and "type" not in block:
+                    text = block.get("text", "")
+                    break
+        if not text:
+            text = data.get("content", "")
+            if isinstance(text, list):
+                text = " ".join(b.get("text", "") for b in text if isinstance(b, dict)) or str(data)
+            elif not isinstance(text, str):
+                text = str(text)
+        return {"content": text}
+
+    def _call_deepseek_patched(messages, api_key, model, base_url,
+                               temperature=0.3, top_p=None, max_tokens=600):
+        """Call DeepSeek /v1/chat/completions (OpenAI SDK-compatible)."""
+        url = f"{base_url.rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        resp = _requests.post(url, headers=headers, json=payload, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+        return {"content": data["choices"][0]["message"]["content"]}
+
+    def _retrying_call(call_fn, *args, max_retries=3, **kwargs):
+        """
+        Tenacity-backed call with TRUE circuit breaker.
+        After max_retries=3 failures: sys.exit(1) — hard kill, no skip, no continue.
+        This prevents zombie errors from silently swallowing failures.
+        """
+        for attempt in Retrying(
+            stop=stop_after_attempt(max_retries),
+            wait=wait_exponential(multiplier=1.0, min=1, max=30),
+            reraise=True,
+        ):
+            with attempt:
+                return call_fn(*args, **kwargs)
+
+    # ── Patch 4: generate_json_insights with physical JSON extraction ──────────
+    def _generate_json_insights_patched(messages, provider=None, model=None,
+                                         temperature=None, max_tokens=None):
+        active = provider or _lf.PROVIDER_DEEPSEEK   # default to deepseek
+        api_key = ""
+        cfg = None
+        top_p = None
+
+        if active == _lf.PROVIDER_DEEPSEEK:
+            api_key = _lf.os.environ.get("DEEPSEEK_API_KEY", "")
+            if not api_key:
+                raise ValueError("DEEPSEEK_API_KEY is not set")
+            cfg = _lf.DEEPSEEK_CONFIG
+            temperature = temperature if temperature is not None else 0.3
+            max_tokens = max_tokens if max_tokens is not None else 600
+        elif active == _lf.PROVIDER_MINIMAX:
+            api_key = _lf.os.environ.get("MINIMAX_API_KEY", "")
+            if not api_key:
+                raise ValueError("MINIMAX_API_KEY is not set")
+            cfg = _lf.MINIMAX_CONFIG
+            temperature = temperature if temperature is not None else cfg["temperature"]
+            max_tokens = max_tokens if max_tokens is not None else cfg["max_tokens"]
+            top_p = cfg.get("top_p", 0.95)
+        else:
+            raise ValueError(f"Unknown provider: {active}")
+
+        model_name = model or cfg["model"]
+        base_url = cfg["base_url"]
+
+        try:
+            call_fn = _call_deepseek_patched if active == _lf.PROVIDER_DEEPSEEK else _call_minimax_patched
+            raw = _retrying_call(
+                call_fn,
+                messages=messages,
+                api_key=api_key,
+                model=model_name,
+                base_url=base_url,
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
+                max_retries=3,
+            )
+            content = raw["content"].strip()
+            content = _extract_json(content)  # Physical JSON extraction for M2.7 multi-block response
+            if content.startswith("```"):
+                parts = content.split("```", 2)
+                if len(parts) >= 3:
+                    content = parts[1].strip()
+                    if content.startswith("json"):
+                        content = content[4:].strip()
+                elif len(parts) == 2:
+                    content = parts[1].strip()
+            _time.sleep(4)  # Phase 3: Slow breathing — Token Plan rate limit respect
+            result = _json.loads(content)
+            if "technical_response_indicators" in result and "technical_indicators" not in result:
+                result["technical_indicators"] = result.pop("technical_response_indicators")
+            return result
+        except (_json.JSONDecodeError, TypeError) as exc:
+            raise RuntimeError(f"LLM returned non-JSON after all retries: {exc}") from exc
+        except RetryError as exc:
+            raise RuntimeError(f"LLM call failed after max retries: {exc}") from exc
+
+    # Apply all patches to the baked module
+    _lf.generate_json_insights = _generate_json_insights_patched
+    _lf._call_minimax = _call_minimax_patched
+
+    # Also patch generate_insights_from_text (historical_chunker imports this directly)
+    def _generate_insights_from_text_patched(text, system_prompt,
+                                              provider=None, temperature=None, max_tokens=None):
+        """
+        Thin wrapper that calls _generate_json_insights_patched.
+        ALL exceptions propagate upward to trigger the TRUE circuit breaker (sys.exit(1)).
+        DO NOT catch and return None — that bypasses the circuit breaker.
+        """
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"【文本块】\n{text[:2500]}"},
+        ]
+        # Phase 3: TRUE circuit breaker — let ALL LLM failures propagate
+        return _generate_json_insights_patched(
+            messages=messages,
+            provider=provider,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+    _lf.generate_insights_from_text = _generate_insights_from_text_patched
+
+    from scripts.seeding.chunkers.historical_chunker import HistoricalChunker, LLMCircuitBreakerError
+
+    # Resolve active LLM provider and its API key
+    active_provider = os.environ.get("ACTIVE_LLM_PROVIDER", "deepseek")
+    if active_provider == "minimax":
+        llm_key = os.environ.get("MINIMAX_API_KEY", "")
+    else:
+        llm_key = os.environ.get("DEEPSEEK_API_KEY", "")
+
     chunker = HistoricalChunker(
         chunk_size=cfg.chunk_size,
-        min_segment_chars=500,
+        min_segment_chars=20,   # was 50 — must be <= MIN_SEGMENT_CHARS constant in chunker
         overlap=80,
-        enable_llm_insights=bool(deepseek_key),
-        deepseek_api_key=deepseek_key,
-        max_concurrency=5,
+        enable_llm_insights=bool(llm_key),
+        deepseek_api_key=llm_key,   # used as api_key for active provider
+        active_llm_provider=active_provider,
+        max_concurrency=1,  # ABSOLUTE single-thread: Token Plan rate limit
     )
 
     # Get outcome for this tender (if exists in CSV)
-    # Fallback to file_hash lookup if tender_id not found (CSV rows without historical_tender_id)
+    # Strategy (4-level fallback):
+    #   1. outcome_book.get(tender_id) — by historical_tender_id (if CSV has it)
+    #   2. outcome_book.get_by_file_hash(parse_result.sha256) — by tender file hash
+    #   3. outcome_book.get_by_project_name(project_name) — by project name with suffix stripping
+    #      (e.g., DB stores "项目_投标文件" but outcome_book has "项目")
+    #   4. Substring fuzzy match — last resort for projects where names diverge
+    #
+    # Level 3 is the key fix: bid files have different SHA256 than tender files,
+    # so level-2 lookup fails. We fall back to project_name matching.
     outcome = outcome_book.get(tender_id) or outcome_book.get_by_file_hash(parse_result.sha256)
+    if not outcome:
+        # Look up project_name from historical_tenders to enable project-name matching
+        from app.models.historical import HistoricalTender
+        with db.session() as session:
+            tender = session.get(HistoricalTender, tender_id)
+            if tender:
+                outcome = outcome_book.get_by_project_name(tender.project_name)
+                if not outcome:
+                    # Last-resort fuzzy match: check if any indexed project_name is a substring
+                    for indexed_project, row in outcome_book._rows_by_project.items():
+                        if indexed_project and tender.project_name:
+                            if indexed_project in tender.project_name or tender.project_name in indexed_project:
+                                outcome = row
+                                break
     win_signal = outcome.get("win_signal", "neutral") if outcome else "neutral"
     source_type = "historical_tender"
 
@@ -227,17 +457,21 @@ def step_load_bid_and_chunks(
 
     # ── Chunk + embed + write loop ──────────────────────────────────────────
     chunks_written = 0
-    chunks = chunker.chunk(
-        blocks,
-        base_metadata={
-            "source_file": str(file_path),
-            "tender_id": tender_id,
-            "win_signal": win_signal,
-            "source_type": source_type,
-            "region_tags": outcome.get("region_tags") if outcome else None,
-            "project_type_tags": outcome.get("project_type_tags") if outcome else None,
-        },
-    )
+    try:
+        chunks = chunker.chunk(
+            blocks,
+            base_metadata={
+                "source_file": str(file_path),
+                "tender_id": tender_id,
+                "win_signal": win_signal,
+                "source_type": source_type,
+                "region_tags": outcome.get("region_tags") if outcome else None,
+                "project_type_tags": outcome.get("project_type_tags") if outcome else None,
+            },
+        )
+    except LLMCircuitBreakerError:
+        # Circuit breaker triggered in thread — os._exit hard-kills from any thread
+        os._exit(1)
 
     if dry_run:
         logging.info("[DRY RUN] Would write %d chunks for %s", len(chunks), file_path)
@@ -513,14 +747,23 @@ def run(cfg: SeedingConfig, dry_run: bool = False, reset: bool = False) -> None:
                     dry_run=dry_run,
                 )
                 total_chunks += chunks
+                db.commit()  # FIX: persist tender + chunks to DB
             except Exception as exc:
                 errors += 1
                 err_msg = f"{type(exc).__name__}: {exc}"
                 logger.error("ERROR processing %s: %s", file_path, err_msg)
+                # Phase 3 TRUE circuit breaker: LLM failure after 3 retries = hard kill
+                if "LLM call failed after max retries" in str(exc):
+                    logger.critical(
+                        "FATAL: LLM failure after 3 retries on %s — hard exiting (sys.exit(1))",
+                        file_path,
+                    )
+                    checkpoint.add_error(str(file_path), err_msg, fatal=True)
+                    os._exit(1)  # Absolute halt — os._exit hard-kills from any thread
                 checkpoint.add_error(str(file_path), err_msg, fatal=cfg.halt_on_error)
                 if cfg.halt_on_error:
                     raise
-                # Continue to next file
+                # Continue to next file (graceful degradation for other errors)
 
         # ── Mark pipeline complete ─────────────────────────────────────────────
         if errors == 0 or not cfg.halt_on_error:
@@ -538,6 +781,10 @@ def run(cfg: SeedingConfig, dry_run: bool = False, reset: bool = False) -> None:
             sys.exit(2)
 
     finally:
+        try:
+            db.commit()  # Safety net: ensure any remaining changes are persisted
+        except Exception:
+            pass
         db.close()
         engine.dispose()
 

@@ -64,3 +64,10 @@ node_modules/
 data/
 data/huggingface_cache/
 ai_service/__pycache__/
+
+# Pipeline state (runtime artifacts, not code)
+status.json
+status.json.bak
+
+# Vue build artifacts
+*.js

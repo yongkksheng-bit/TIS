@@ -63,6 +63,10 @@ class OutcomeBook:
         for row in rows.values():
             self.all_loss_tags.update(row.get("loss_root_cause_tags", []))
             self.all_win_tags.update(row.get("win_breakthrough_tags", []))
+        # Secondary index: file_hash → row (populated by from_csv)
+        self._rows_by_hash: dict[str, dict] = {}
+        # Tertiary index: project_name → row (populated by from_csv)
+        self._rows_by_project: dict[str, dict] = {}
 
     @classmethod
     def from_csv(cls, csv_path: str | Path) -> "OutcomeBook":
@@ -80,15 +84,22 @@ class OutcomeBook:
             ValueError: if required column 'historical_tender_id' is missing.
         """
         rows: dict[int, dict] = {}
-        missing_required = []
+        # Secondary index: file_hash → row (for tender_file_name lookup)
+        rows_by_hash: dict[str, dict] = {}
+        # Tertiary index: project_name → row (for bid file resolution)
+        rows_by_project: dict[str, dict] = {}
 
         with open(csv_path, "r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             for lineno, raw_row in enumerate(reader, start=2):  # start=2 (header=1)
                 tender_id_str = raw_row.get("historical_tender_id", "").strip()
                 file_hash_str = raw_row.get("tender_file_hash", "").strip()
-                # Accept row if it has either tender_id OR file_hash
-                if not tender_id_str and not file_hash_str:
+                # CSV header has trailing space: "tender_file_name " (key has trailing space)
+                tender_file_name = raw_row.get("tender_file_name", "").strip() or raw_row.get("tender_file_name ", "").strip()
+                project_name = raw_row.get("project_name", "").strip()
+                # Accept row if it has tender_id, file_hash, tender_file_name, OR project_name
+                # (rows can be indexed by project_name even without other identifiers)
+                if not tender_id_str and not file_hash_str and not tender_file_name and not project_name:
                     continue  # skip rows without any identifier
 
                 tender_id: Optional[int] = None
@@ -102,17 +113,65 @@ class OutcomeBook:
                         )
                         continue
 
-                # Use tender_id if available, else 0 as sentinel for file_hash lookup
-                resolved_id = tender_id if tender_id else 0
                 row = cls._normalize_row(raw_row)
                 row["tender_file_hash"] = file_hash_str
-                rows[resolved_id] = row
+                row["tender_file_name"] = tender_file_name
+
+                # Primary: use tender_id if available
+                if tender_id is not None:
+                    rows[tender_id] = row
+                # Secondary: use file_hash if available (sentinel key 0)
+                if file_hash_str:
+                    rows_by_hash[file_hash_str] = row
+                # Tertiary: tender_file_name maps to SHA256 of that file on disk
+                if tender_file_name and not file_hash_str:
+                    # Compute hash from the actual file on disk if it exists
+                    import os
+                    possible_paths = [
+                        Path(csv_path).parent / "tenders" / tender_file_name,
+                        Path(csv_path).parent / tender_file_name,
+                    ]
+                    for p in possible_paths:
+                        if p.exists():
+                            import hashlib
+                            h = hashlib.sha256()
+                            with open(p, "rb") as fh:
+                                for chunk in iter(lambda: fh.read(8192), b""):
+                                    h.update(chunk)
+                            computed_hash = h.hexdigest()
+                            row["tender_file_hash"] = computed_hash
+                            rows_by_hash[computed_hash] = row
+                            logger.debug(
+                                "Matched tender_file_name %r → SHA256=%s",
+                                tender_file_name, computed_hash[:16],
+                            )
+                            break
+                    else:
+                        logger.debug(
+                            "tender_file_name %r has no matching file on disk — skipping hash lookup",
+                            tender_file_name,
+                        )
+
+                # Quaternary: index by project_name for bid file resolution
+                project_name = raw_row.get("project_name", "").strip()
+                if project_name:
+                    rows_by_project[project_name] = row
+                    # Also strip common suffixes and index as fallback
+                    stripped = _strip_doc_suffix(project_name)
+                    if stripped and stripped != project_name:
+                        rows_by_project[stripped] = row
 
         logger.info(
-            "Loaded outcome book: %d rows from %s",
-            len(rows), csv_path,
+            "Loaded outcome book: %d rows (by tender_id), %d rows (by file_hash), %d rows (by project_name)",
+            len(rows), len(rows_by_hash), len(rows_by_project),
         )
-        return cls(rows)
+
+        instance = cls(rows)
+        # Attach secondary hash index for get_by_file_hash
+        instance._rows_by_hash = rows_by_hash
+        # Attach tertiary project_name index for get_by_project_name
+        instance._rows_by_project = rows_by_project
+        return instance
 
     @classmethod
     def _normalize_row(cls, raw_row: dict[str, str]) -> dict[str, Any]:
@@ -149,7 +208,7 @@ class OutcomeBook:
         bid_status = raw_row.get("our_bid_status", "").strip().lower()
         if bid_status == "won":
             win_signal = "positive"
-        elif bid_status == "lost":
+        elif bid_status in ("lost", "failed"):
             win_signal = "negative"
         else:
             win_signal = "neutral"
@@ -205,13 +264,59 @@ class OutcomeBook:
 
     def get_by_file_hash(self, file_hash: str) -> Optional[dict[str, Any]]:
         """Get the first outcome row whose tender_file_hash matches, or None."""
-        for row in self.rows.values():
-            if row.get("tender_file_hash", "").strip() == file_hash.strip():
-                return row
-        return None
+        return self._rows_by_hash.get(file_hash.strip()) or None
 
     def __contains__(self, tender_id: int) -> bool:
         return tender_id in self.rows
 
     def __len__(self) -> int:
         return len(self.rows)
+
+    def get_by_project_name(self, project_name: str) -> Optional[dict[str, Any]]:
+        """
+        Get the outcome row for a project, with suffix-stripping fallback.
+
+        This enables bid files (whose project_name in DB ends with _投标文件)
+        to match outcome_book entries whose project_name is the base name.
+
+        Args:
+            project_name: The project name to look up (may have _投标文件/_招标文件 suffix).
+
+        Returns:
+            The outcome row if found, otherwise None.
+        """
+        if not project_name:
+            return None
+        project_name = project_name.strip()
+        # Try exact match first
+        if project_name in self._rows_by_project:
+            return self._rows_by_project[project_name]
+        # Fallback: strip suffix and try again
+        stripped = _strip_doc_suffix(project_name)
+        if stripped and stripped != project_name:
+            return self._rows_by_project.get(stripped)
+        return None
+
+
+def _strip_doc_suffix(name: str) -> str:
+    """
+    Strip common document suffixes from a filename stem.
+
+    Removes: _投标文件, _招标文件, _价格文件, _资格证明文件, _投标书, _采购包 N
+    """
+    suffixes = [
+        "_投标文件",
+        "_招标文件",
+        "_价格文件",
+        "_资格证明文件",
+        "_投标书",
+    ]
+    for s in suffixes:
+        if name.endswith(s):
+            return name[: -len(s)]
+    # Handle "_采购包 N" pattern (e.g., "_采购包 1")
+    import re
+    m = re.search(r"_采购包\s*\d+$", name)
+    if m:
+        return name[: m.start()]
+    return name

@@ -95,7 +95,24 @@
 
 - `DELETE /projects/{id}` 执行软删除（`is_deleted=True`），不物理删除记录
 - 软删除的项目不参与三重防重检测，允许同名项目重新创建
-- 硬删除（物理删除）为未来扩展，预留 `_hard_delete_project()` 钩子
+- `GET /api/projects/trash` 列出所有已软删除项目，供回收站界面使用
+- `POST /api/projects/{id}/restore` 将项目从回收站恢复（`is_deleted=False`）
+- `DELETE /api/projects/{id}/hard-delete` 执行物理删除，触发 DB、MinIO、pgvector 三方联动清理
+- `POST /api/projects/clear-trash` 批量清空回收站，逐项执行三方联动清理
+
+### R6.1 物理删除三方联动清理规范
+
+物理删除操作会触发以下三方联动清理（任一步骤失败不影响其他步骤）：
+
+| 步骤 | 系统 | 操作内容 |
+|------|------|---------|
+| 1 | MinIO/S3 | 删除 `project-{id}/` 前缀的所有归档文件对象（非阻塞） |
+| 2 | pgvector | `DELETE FROM knowledge_chunks WHERE source_project_id = id`（非阻塞） |
+| 3 | PostgreSQL | `DELETE projects` + CASCADE 自动清理 TenderDocument/BidDocument/DocumentImage/OcrExtraction |
+
+- MinIO/pgvector 失败不影响 DB 事务提交（两者为独立清理步骤）
+- 删除向量数据时使用 `project_id` 精确过滤，严禁误删其他项目数据
+- 所有 DB 操作在同一事务内完成
 
 ### R7. 算力异构架构（永久锁定）
 

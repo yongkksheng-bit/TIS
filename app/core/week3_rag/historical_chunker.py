@@ -33,21 +33,129 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import partial
 from typing import Any, Optional
+
+from app.core.llm_factory import generate_insights_from_text
 
 logger = logging.getLogger(__name__)
 
-from scripts.seeding.chunkers.chunker_types import (
-    BOILERPLATE_KEYWORDS,
-    DIMENSION_KEYWORDS,
-    GENERATIVE_KEYWORDS,
-    HistoricalRoughSegmenter,
-    LLMCircuitBreakerError,
-    Segment,
-    ChunkDict,
-    _is_navigation_marker,
-    _SENTENCE_PUNCTUATIONS,
+# ─── Sentence boundary punctuation ─────────────────────────────────────────────
+_SENTENCE_PUNCTUATIONS = ["\n", "。", "！", "？", ".", "!", "?"]
+
+# ─── Boilerplate keyword sets ─────────────────────────────────────────────────
+
+# Static template sections — discard without入库 (no RAG intelligence value).
+# P1 FIX: Only pure legal/format phrases that carry ZERO business intelligence.
+# Single generic chars like "管理" have been REMOVED — they kill legitimate content.
+# Match: ONLY exact phrases (whole-word), not character substrings.
+BOILERPLATE_KEYWORDS: list[str] = [
+    # 纯法务/格式标记 — 仅当独立词汇出现时才算模板
+    "盖章处", "（公章）", "（法人章）",          # 签章位置标记
+    "投标函", "响应函", "澄清函",                 # 函件抬头
+    "封面", "扉页", "目录", "索引", "附件",       # 文件结构（含"目录"）
+    "密封", "正本", "副本",                       # 装订格式
+    "此页无正文", "（此页空白）",                  # 格式填充页
+    # 评分结果公布（与"评分标准"是两码事，这里只留公示性词汇）
+    "得分汇总", "最终得分",
+    # 格式废话 — 常见于身份证/营业执照复印件标注
+    "法定代表人", "被授权人", "身份证复印件", "营业执照复印件",
+    "（复印件）", "（副本）", "（盖章）",
+]
+
+# Dynamic generative sections — these carry RAG intelligence (入库).
+# P1 FIX: Expanded to cover ALL legitimate business content.
+# ANY block that hits these keywords is forcibly preserved (whitelist override).
+GENERATIVE_KEYWORDS: list[str] = [
+    # 服务与方案类
+    "服务方案", "配送方案", "应急方案", "保障方案", "实施方案",
+    "服务要求", "技术要求", "服务承诺", "实施方案",
+    # 质量与安全
+    "质量保障", "食品安全", "卫生管理", "卫生保障", "安全保障",
+    "质量管理体系", "食品安全管理体系",
+    # 采购与配送
+    "采购计划", "采购流程", "采购需求", "采购管理",
+    "配送方案", "配送计划", "配送服务", "配送流程", "配送管理",
+    "冷链配送", "冷链管理", "冷链物流",
+    # 管理方案
+    "管理方案", "管理制度", "管理措施", "管理体系",
+    "运营方案", "运营管理", "日常管理",
+    # 人员与培训
+    "人员配置", "人员安排", "培训计划", "培训方案", "考核机制",
+    "岗位职责", "工作流程", "操作规程",
+    # 食材与溯源
+    "食材溯源", "来源证明", "产地证明", "检疫证明", "合格证明",
+    "原材料管理", "食品留样",
+    # 报价与成本
+    "报价方案", "价格说明", "费用清单", "预算明细", "成本分析",
+    "报价说明", "价格策略",
+    # 业绩与案例
+    "业绩", "案例", "项目经验", "成功案例", "类似项目", "既往业绩",
+    "企业业绩", "典型案例",
+    # 技术与工艺
+    "技术措施", "技术方案", "技术工艺", "施工方案", "工艺流程",
+    "技术响应", "技术路线",
+    # 监督与应急
+    "监督机制", "应急预案", "应急措施", "应急保障", "风险防控",
+    # 健康与资质
+    "健康证明", "体检", "资质证书", "体系认证",
+    # 项目理解
+    "项目概况", "项目背景", "项目目标", "项目范围",
+    # 其他商业智慧
+    "竞争优势", "核心优势", "差异化", "服务特色",
+]
+
+# ─── Scoring dimension auto-tagging ───────────────────────────────────────────
+DIMENSION_KEYWORDS: dict[str, list[str]] = {
+    "食材溯源":     ["食材", "溯源", "来源", "产地证明", "检疫", "合格证明", "原材料"],
+    "冷链管理":     ["冷链", "冷藏", "冷冻", "温度控制", "冷库", "冷链车", "全程冷链"],
+    "卫生保障":     ["卫生", "消毒", "清洁", "食品安全", "健康管理", "卫生许可证"],
+    "配送能力":     ["配送", "运输", "送货车", "物流", "时效", "配送车辆", "运输能力"],
+    "报价合理性":   ["报价", "价格", "预算", "成本", "性价比", "总价", "单价", "优惠"],
+    "服务方案":     ["服务", "方案", "承诺", "计划", "措施", "服务承诺", "质量保障"],
+    "企业资质":     ["资质", "认证", "证书", "ISO", "执照", "营业执照", "体系认证"],
+    "历史业绩":     ["业绩", "案例", "项目经验", "成功案例", "类似项目", "既往业绩"],
+    "技术方案":     ["技术", "方案", "措施", "技术措施", "工艺", "施工方案"],
+    "评分标准":     ["评分", "评标", "权重", "得分", "分值", "技术分", "商务分"],
+}
+
+# ─── LLM API config ───────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# GOLDEN PROMPT V3 — M2.7 Muscle-Memory Edition
+# ══════════════════════════════════════════════════════════════════════════════
+# INTENT: Model must understand its output feeds DIRECTLY into json.loads().
+#         Any extra chars (markdown, thinking tags, explanations) = systematic
+#         crash. This is not a writing exercise — it is a data exchange protocol.
+# ══════════════════════════════════════════════════════════════════════════════
+# CRITICAL: Keep this short — M2.7 returns unquoted JSON keys when prompt is too long.
+# Test evidence: short prompt (~50 chars) → valid JSON; long prompt (~300+ chars) → unquoted keys.
+LLM_SYSTEM_PROMPT = (
+    "你是招投标专家。只输出JSON，禁止任何其他文字：\n"
+    "{\"core_pain_points\":[],\"technical_indicators\":[],\"competitive_advantages\":[]}"
 )
+
+
+# ─── LLM call via unified factory ─────────────────────────────────────────────
+
+def _llm_call_with_retry(
+    text: str,
+    api_key: Optional[str] = None,
+    retry: int = 3,
+) -> Optional[dict]:
+    """
+    Thin wrapper around llm_factory.generate_insights_from_text().
+
+    Calls through the llm_factory MODULE (not a local binding) so that
+    run_import.py patches to llm_factory.generate_insights_from_text take effect.
+    The api_key argument is accepted but ignored — the factory reads
+    the appropriate key from the ACTIVE_LLM_PROVIDER environment variable.
+    """
+    import app.core.llm_factory as _lf
+    return _lf.generate_insights_from_text(
+        text=text,
+        system_prompt=LLM_SYSTEM_PROMPT,
+    )
+
 
 # ─── Dataclasses ──────────────────────────────────────────────────────────────
 
@@ -140,7 +248,10 @@ class HistoricalRoughSegmenter:
         ),
     ]
 
-    MIN_SEGMENT_CHARS = 500
+    MIN_SEGMENT_CHARS = 50   # was 500 — lowered to let short business content through; short segs merge into next
+
+    def __init__(self, min_segment_chars: int = 500):
+        self.min_segment_chars = min_segment_chars
 
     def rough_segment(self, text: str) -> list[Segment]:
         """
@@ -213,12 +324,13 @@ class HistoricalRoughSegmenter:
         return [dim for dim, _ in sorted(scores.items(), key=lambda x: -x[1])]
 
     def _merge_short_segments(self, segments: list[Segment]) -> list[Segment]:
-        """Merge segments shorter than MIN_SEGMENT_CHARS into the previous."""
+        """Merge segments shorter than min_segment_chars into the previous."""
         if not segments:
             return []
         merged: list[Segment] = []
+        min_chars = self.min_segment_chars
         for seg in segments:
-            if seg.char_length < self.MIN_SEGMENT_CHARS and merged:
+            if seg.char_length < min_chars and merged:
                 prev = merged[-1]
                 combined = prev.body + "\n" + seg.body
                 combined_tags = list(set(prev.dimension_tags) | set(seg.dimension_tags))
@@ -276,12 +388,14 @@ class HistoricalChunker:
         self.max_overlap_fraction = max_overlap_fraction
         self.enable_llm_insights = enable_llm_insights
         self.deepseek_api_key = deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY", "")
+        # Any provider key enables LLM insights (factory reads the right one from env)
+        self._llm_available = bool(os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("MINIMAX_API_KEY"))
         self.max_concurrency = max_concurrency
         self.min_table_chars = min_table_chars
 
         # Semaphore for Patch 1: cap concurrent LLM calls
         self._llm_semaphore: Optional[Any] = None
-        if self.enable_llm_insights and self.deepseek_api_key:
+        if self.enable_llm_insights and self._llm_available:
             try:
                 from threading import Semaphore
                 self._llm_semaphore = Semaphore(max_concurrency)
@@ -316,7 +430,7 @@ class HistoricalChunker:
 
         # Patch 1: prepare ThreadPoolExecutor for concurrent LLM calls
         executor: Optional[ThreadPoolExecutor] = None
-        if self.enable_llm_insights and self.deepseek_api_key:
+        if self.enable_llm_insights and self._llm_available:
             executor = ThreadPoolExecutor(max_workers=self.max_concurrency)
 
         # Collect LLM futures for batch processing
@@ -356,13 +470,22 @@ class HistoricalChunker:
 
             else:
                 # ── Layer 0: Paragraph block ────────────────────────────────
-                if not content or len(content) < self.min_segment_chars:
+                if not content.strip():
                     continue
 
                 # Layer 1: Boilerplate filter
                 if self._is_boilerplate(content):
                     logger.debug("Boilerplate filtered: %s", content[:40])
                     continue
+
+                # Layer 1.5: Short-text guard — discard paragraph blocks that are
+                # too short to carry business intelligence (e.g. "目 录", "（1）", "答：")
+                if len(content.strip()) < 30:
+                    logger.debug("Short block filtered (%d chars): %s", len(content), content[:30])
+                    continue
+
+                # NOTE: min_segment_chars check moved INSIDE rough_segment
+                # (short segments will merge with neighbors; truly empty ones drop out)
 
                 # Layer 2: Rough segment + sliding window
                 segs = self._rough_segment(content)
@@ -374,6 +497,10 @@ class HistoricalChunker:
                         block_type="paragraph",
                     )
                     for sub in sub_chunks:
+                        # Guard: discard sub-chunks that are too short (e.g. 1-token fragments)
+                        if len(sub.text.strip()) < 20:
+                            global_index += 1
+                            continue
                         # Enrich sub-chunk metadata
                         sub.metadata.update({
                             **base_metadata,
@@ -385,14 +512,15 @@ class HistoricalChunker:
                         chunk_buffer[sub.chunk_index] = sub
 
                     # Schedule LLM extraction concurrently (Patch 1)
-                    if self.enable_llm_insights and self.deepseek_api_key:
+                    if self.enable_llm_insights and self._llm_available:
                         for sub in sub_chunks:
+                            _text = sub.text
+                            _chunk_index = sub.chunk_index
                             fut = executor.submit(
                                 _llm_call_with_retry,
-                                sub.text,
-                                self.deepseek_api_key,
+                                _text,
                             )
-                            llm_futures[id(fut)] = sub.chunk_index
+                            llm_futures[fut] = sub.chunk_index
 
                     global_index += len(sub_chunks)
 
@@ -400,7 +528,7 @@ class HistoricalChunker:
         if executor:
             executor.shutdown(wait=True)
             for fut in as_completed(llm_futures):
-                chunk_idx = llm_futures[id(fut)]
+                chunk_idx = llm_futures[fut]
                 if chunk_idx in chunk_buffer:
                     insights = fut.result()
                     if insights:
@@ -429,24 +557,35 @@ class HistoricalChunker:
         """
         判断文本块是否为静态模板（应丢弃）。
 
-        规则：首行出现BOILERPLATE_KEYWORDS → 丢弃。
-        特例：若首行同时包含GENERATIVE_KEYWORDS，则视为动态生成（保留）。
+        P1 FIX — Whitelist Override Logic:
+          1. ANY line hits GENERATIVE_KEYWORDS  → KEEP (whitelist override)
+          2. First line hits BOILERPLATE_KEYWORDS → DISCARD
+          3. Otherwise                                                    → KEEP
         """
-        first_line = text.split("\n")[0].strip()
-        if not first_line:
+        if not text.strip():
             return True
 
-        bp_hit = any(kw in first_line for kw in BOILERPLATE_KEYWORDS)
-        gen_hit = any(kw in first_line for kw in GENERATIVE_KEYWORDS)
+        lines = text.split("\n")
 
-        # Boilerplate ONLY if generative keywords are absent
-        return bp_hit and not gen_hit
+        # Step 1: Whitelist — if ANY line hits generative keywords → keep
+        any_gen = any(
+            any(kw in line for kw in GENERATIVE_KEYWORDS)
+            for line in lines
+        )
+        if any_gen:
+            return False
+
+        # Step 2: Boilerplate only if first line hits boilerplate keywords
+        first_line = lines[0].strip()
+        bp_hit = any(kw in first_line for kw in BOILERPLATE_KEYWORDS)
+
+        return bp_hit
 
     # ── Layer 2: Rough segment ────────────────────────────────────────────────
 
     def _rough_segment(self, text: str) -> list[Segment]:
         """Segment paragraph text into topic-aligned chunks."""
-        return HistoricalRoughSegmenter().rough_segment(text)
+        return HistoricalRoughSegmenter(min_segment_chars=self.min_segment_chars).rough_segment(text)
 
     # ── Layer 2: Sliding window ───────────────────────────────────────────────
 
