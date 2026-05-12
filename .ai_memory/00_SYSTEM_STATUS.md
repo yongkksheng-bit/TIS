@@ -6,25 +6,32 @@
 
 ## 【当前总体进度】
 
-**2026-03-31 重大更新：双重防重 + Week 1/2 重构 + 关系标识正交化**
+**2026-04-15 冷启动接管：全量审计完成，发现关键 Bug + 资产丢失**
 
-- `plan_code` + `agency_project_code` 双键防重体系已上线（w010 迁移 + 三重校验端点）
-- `relationship_flag` 从 Week 1 迁移至 Week 2，与 `generation_mode` 完全解耦
-- 专员越级放行（direct_execute）已实现，3 动作审批模型已上线
+**2026-04-14 完成：V3 Seeding Pipeline 重构 + Week3/4 双轨 RAG + 博弈定价完善**
+
+- **V3 Seeding Pipeline**：docx_parser.py（337行，paragraph+table混合解析）+ historical_chunker.py（697行，Filter Chain + LLM洞察）
+- **4个企业级防爆补丁**：Exponential Backoff+Jitter / 表格原子emit / has_table标签 / JSONB安全
+- **Deep Bid Analyzer**：Map-Reduce DeepSeek API，16章46KB报告，scripts/deep_bid_analysis/
+- **Template Reverse Engineer**：DOCX TOC提取，785段落分类，bid_template_structure.json（405KB）
+- **Week4 定价博弈**：game_theory.py（market_context注入）+ price_benchmark.py（MarketHeatContext）
+- **Week3 双轨 RAG**：retriever.py dual-track + generator.py use_dual_track_rag
+- **TrashView.vue**：回收站视图（278行），独立页面
+- **⚠️ w013-w018 迁移全部 untracked**：需立即 git add + commit
 ---
 
 ## 【当前正在处理】
 
-**2026-03-31 完成的工作：**
+**2026-04-14 完成的工作（全局审计 + 记忆更新）：**
 
-1. **新增 Alembic 迁移 w010**：`plan_code` + `agency_project_code` 添加到 `projects` 和 `tender_documents` 表
-2. **parser.py 正则提取**：采购计划编号（`441301-2025-03605`）、采购项目编号（`HZJJ-2025118号`）
-3. **三重防重端点** `POST /api/projects`：plan_code → agency_project_code → project_name，409 返回 `duplicate_code` 含编号类型
-4. **ConfirmationView 双列网格**：el-row/el-col 紧凑布局，删除 relation_identifier + differentiation_guidance
-5. **EvaluationView 3 按钮操作台**：`submit_to_boss` / `direct_execute` / `terminate` 三动作
-6. **关系标识强制回滚**：`PUT /{id}/relationship` + `process_relationship_change()` — Week 3+ 变更触发 rollback
-7. **ElMessageBox.confirm**：ProjectUploadView 409 处理升级为阻断性弹窗
-8. **文档更新**：MASTER_SPEC 第 4/5/6/7 章 + ARCHITECTURE_AUDIT D-012
+1. **V3 Seeding Pipeline 重构** — docx_parser.py + historical_chunker.py V3
+2. **4个企业级防爆补丁** — API雪崩防御 / 表格防断裂 / has_table标签 / JSONB兼容
+3. **Deep Bid Analyzer** — Map-Reduce DeepSeek API 分析脚本
+4. **Template Reverse Engineer** — DOCX TOC 提取 + 段落分类
+5. **Week3 双轨 RAG 验证** — retrieve_positive/negative_samples 已实现
+6. **Week4 博弈定价验证** — market_context + MarketHeatContext 已实现
+7. **龙虾记忆全局更新** — AI_MEMORY.md + .ai_memory/ 全量刷新
+8. **w013-w018 迁移文件审计** — 全部 untracked，需尽快提交
 
 ---
 
@@ -39,8 +46,14 @@
   tis_backend:  localhost:8000 → container:8000
   tis_frontend: localhost:3000 → container:80
 数据库: canteen_system (postgres:5433, 密码: Syk0215)
-Alembic迁移链: w001 → ... → w007(w009) → w008 → w009 → w010
+Alembic迁移链: w001 ~ w012 (已提交) → w013~w018 (⚠️全部untracked)
 DEEPSEEK_API_KEY: (容器环境变量中，模拟模式 source_chunk_count=0)
+```
+
+**⚠️ 紧急：w013-w018 迁移全部 untracked**
+```bash
+# 立即执行
+cd D:/tis_project && git add alembic/versions/w013*.py alembic/versions/w014*.py alembic/versions/w015*.py alembic/versions/w016*.py alembic/versions/w017*.py alembic/versions/w018*.py
 ```
 
 **关键运维命令：**
@@ -57,7 +70,7 @@ docker ps --format "{{.Names}}\t{{.Ports}}"
 # 直连后端 API 验证
 curl http://localhost:8000/api/v1/projects/53/evaluations/generate
 
-# E2E 测试
+# E2E 测试（如脚本存在）
 python scripts/live_fire_e2e.py
 ```
 
@@ -65,14 +78,16 @@ python scripts/live_fire_e2e.py
 
 ## 【今日待办】
 
-- [x] 双重防重键（plan_code / agency_project_code）模型 + 迁移
-- [x] parser.py 正则提取采购计划编号 + 采购项目编号
-- [x] 三重防重端点 + 丰富 409 Payload
-- [x] ConfirmationView 双列网格布局
-- [x] EvaluationView 3 按钮操作台 + 强制回滚
-- [x] ElMessageBox.confirm 处理 409
-- [x] 文档更新（MASTER_SPEC、ARCHITECTURE_AUDIT、AI_MEMORY）
-- [x] 龙虾记忆归档（本次）
+- [x] V3 Seeding Pipeline 重构（docx_parser.py + historical_chunker.py）
+- [x] 4个企业级防爆补丁（API雪崩/表格防断裂/has_table标签/JSONB兼容）
+- [x] Deep Bid Analyzer（Map-Reduce DeepSeek API，16章46KB）
+- [x] Template Reverse Engineer（DOCX TOC，785段落分类）
+- [x] Week3 双轨 RAG 验证（retriever.py + generator.py 已实现）
+- [x] Week4 博弈定价验证（game_theory.py + price_benchmark.py 已实现）
+- [x] 龙虾记忆全局更新（AI_MEMORY.md + .ai_memory/ 全量刷新）
+- [x] w013-w018 迁移文件 git add + commit ✅ (commit 6be65bc)
+- [ ] embedder.py 写入 w015 新增的 12 个 metadata 字段
+- [ ] 接通真实 ais_service（RAG E2E 验证）
 
 ---
 
@@ -80,9 +95,10 @@ python scripts/live_fire_e2e.py
 
 | 阻塞点 | 说明 | 状态 |
 |--------|------|------|
+| w013-w018 迁移 untracked | 6个迁移文件随时可能丢失 | ⚠️ 紧急提交 |
 | DeepSeek API 模拟模式 | `source_chunk_count: 0`，返回模拟内容 | 需配置真实 DEEPSEEK_API_KEY |
+| embedder.py 未写 w015 字段 | knowledge_chunks 新字段全部为 NULL | 待完成 |
 | OCR bid_open_date 未提取 | PDF 解析精度问题 | 非阻塞，属模拟 OCR |
-| PDF iframe 预览未加载 | Vue/iframe 时序问题 | 非阻塞，不影响流程 |
 
 ---
 
@@ -90,7 +106,10 @@ python scripts/live_fire_e2e.py
 
 | 日期 | 更新摘要 |
 |------|----------|
-| 2026-03-31 | **双重防重 + Week 1/2 重构** - plan_code/agency_project_code 双键体系上线；三重防重端点；ConfirmationView 网格化；EvaluationView 3 按钮操作台；relationship_flag ⊥ generation_mode 解耦；ElMessageBox.confirm 全局升级 |
+| 2026-04-14 | **V3 Seeding Pipeline + Week3/4 双轨 RAG** - docx_parser.py V3(337行)+historical_chunker.py V3(697行)；4防爆补丁；Deep Bid Analyzer+Template Reverse Engineer；w013-w018迁移审计（全部untracked）；龙虾记忆全局刷新 |
+| 2026-03-31 夜 | **Week5 形式审查上线 + 超时/Bug 修复收尾** - formal_review.py 10端点；advance-to-pricing；504三层超时链修复；Pydantic dict[Any]；FastAPI路由顺序；Hard Delete FK防御性删除；confirmAllSections空函数；龙虾记忆自沉积 |
+| 2026-03-31 下午 | **Hard Delete 物理删除上线** - 三方联动清理（DB+MinIO+pgvector）；TrashView.vue 回收站界面；恢复/永久销毁/Clear All；R6.1 规范写入 MASTER_SPEC |
+| 2026-03-31 上午 | **双重防重 + Week 1/2 重构** - plan_code/agency_project_code 双键体系上线；三重防重端点；ConfirmationView 网格化；EvaluationView 3 按钮操作台；relationship_flag ⊥ generation_mode 解耦；ElMessageBox.confirm 全局升级 |
 | 2026-03-30 | **qualification_matcher 假数据修复** - tender_reqs=[] 时正确返回 score=0 + fatal risk；端口拓扑澄清（8000 Docker，8001 Anaconda 孤儿） |
 | 2026-03-29 | **E2E 全链路 9/11 PASS** - RAG 生成成功，Boss 审批 RBAC 生效；修复双重 `/api` 前缀、canGenerate 逻辑、Element Plus textarea 检测 |
 
@@ -117,7 +136,16 @@ python scripts/live_fire_e2e.py
 - `DELETE /projects/{id}` 执行软删除（is_deleted=True），不物理删除记录
 - 软删除后的项目不参与任何重复检测，允许同名项目重新创建
 - `GET /projects` 和 `GET /{id}` 均过滤 `is_deleted=False`
-- 硬删除（物理删除）预留 `_hard_delete_project()` 钩子，待未来实现
+- `GET /projects/trash` 列出所有 is_deleted=True 项目
+- `POST /projects/{id}/restore` 从回收站恢复（is_deleted=False）
+- `DELETE /projects/{id}/hard-delete` 物理删除，触发三方联动清理
+
+### 物理删除三方联动清理规范（已实现）
+- 步骤1：MinIO 删除 `project-{id}/` 前缀对象（非阻塞，失败记 -1）
+- 步骤2：pgvector 删除 `knowledge_chunks WHERE source_project_id=id`（非阻塞，失败记 -1）
+- 步骤3：PostgreSQL DELETE + CASCADE 自动清理关联行
+- MinIO/pgvector 失败不影响 DB 事务提交
+- 删除向量数据时用 `project_id` 精确过滤，严禁误删其他项目数据
 
 ### 算力异构架构（永久锁定）
 - **Embedding**：BGE-Small on GPU (FP16) → `AIServiceEmbedder` 调用 `http://ai_service:8000/embed`
@@ -131,7 +159,7 @@ python scripts/live_fire_e2e.py
 - RAG 检索是处理长文档（>12,000 chars）的唯一路径
 
 ### 前端请求超时配置
-- axios 全局 `timeout: 120000`（120 秒），适应大 PDF 解析 + GPU 向量计算
+- axios 全局 `timeout: 300000`（300 秒），配合 Nginx 300s 和 Uvicorn --timeout-keep-alive 300，三层统一
 
 ---
 

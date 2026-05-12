@@ -1,6 +1,7 @@
 # 因果记录 | 龙虾记忆
 
 > **踩坑记录** - 记录 Bug 及其根本原因，防重复犯错
+> **上次更新：2026-04-14** - V3 Pipeline 设计模式 + w013-w018 迁移紧急警告
 
 ---
 
@@ -666,3 +667,319 @@ if not override_reason or len(override_reason) < 10:
 ```
 
 **教训：** 初审意见是"意见记录"而非"正式审批文档"，强制10字无业务依据。防呆设计不应演变为用户体验阻碍。
+
+---
+
+### Bug-013：FastAPI 路由顺序陷阱——`/{project_id}` 吞噬 `/trash` 静态路径（2026-03-31 晚）
+
+- **Type**: 因果
+- **Score**: 1.0
+- **Date**: 2026-03-31
+- **Status**: Active
+---
+**现象：** `GET /api/projects/trash` 返回 404，`curl` 日志显示路由未匹配。
+
+**根因：** FastAPI 路由按定义顺序匹配，`/{project_id}` 路径参数路由写在 `/trash` 静态路径之前，导致 FastAPI 将 "trash" 当作 `project_id` 处理。
+
+**诊断命令（容器内）：**
+```bash
+docker compose exec backend python -c "
+from app.api.v1.endpoints.projects import router
+for r in router.routes:
+    print(list(r.methods), r.path)
+"
+```
+
+**涉及文件：** `app/api/v1/endpoints/projects.py`
+
+**修复：** 所有静态路径（`/trash`、`/clear-trash`）必须定义在 `/{project_id}` 动态路径参数路由**之前**。
+
+**正确顺序：**
+```python
+# ✅ 正确（静态路径在前）
+router.get("/trash")
+router.post("/clear-trash")
+router.get("/{project_id}")
+router.put("/{project_id}/relationship")
+
+# ❌ 错误（动态路径在前，吞噬静态路径）
+router.get("/{project_id}")
+router.get("/trash")    # 永远不会被匹配
+```
+
+---
+
+### Bug-014：Hard Delete FK 约束失败——`approval_logs` 缺 CASCADE（2026-03-31 晚）
+
+- **Type**: 因果
+- **Score**: 1.0
+- **Date**: 2026-03-31
+- **Status**: Active
+---
+**现象：** `DELETE /api/projects/{id}/hard-delete` 返回 500：`psycopg2.errors.ForeignKeyViolation: Key (id)=(87) is still referenced from table "approval_logs"`
+
+**根因：** PostgreSQL 中 `approval_logs.project_id` 到 `projects.id` 的外键约束**没有** `ON DELETE CASCADE`，物理删除主记录前必须先手动删除子记录。
+
+**修复：** 在 `db.delete(project)` 前手动删除关联记录：
+```python
+# 手动删除无 CASCADE 的关联表
+from app.models.approval import ApprovalLog
+from app.models.discarded import DiscardedProject
+db.query(ApprovalLog).filter(ApprovalLog.project_id == project_id).delete()
+db.query(DiscardedProject).filter(DiscardedProject.project_id == project_id).delete()
+db.delete(project)
+db.commit()
+```
+
+**教训：** 不是所有外键都有 CASCADE。生产环境应预先检查 FK 约束定义，或者在 `hard_delete` 中做防御性删除。
+
+---
+
+### Bug-015：Detached ORM 对象——`clear_trash` 回滚后访问属性崩溃（2026-03-31 晚）
+
+- **Type**: 因果
+- **Score**: 1.0
+- **Date**: 2026-03-31
+- **Status**: Active
+---
+**现象：** `clear_trash` 中某条记录删除失败后，`project.id` / `project.project_name` 抛出 `PendingRollbackError`。
+
+**根因：** `db.commit()` 抛出异常后事务回滚，ORM 对象 `project` 从 session 分离（detached），访问其属性报错。
+
+**修复：** 在 try 块之前捕获主键和名称：
+```python
+for project in trash_projects:
+    pid = project.id
+    pname = project.project_name   # ← 在事务外提前捕获
+    try:
+        _hard_delete(db, pid)
+        cleared.append({"project_id": pid, "project_name": pname})
+    except Exception as e:
+        logger.error(f"failed to hard-delete project {pid} ({pname}): {e}")
+        errors.append({"project_id": pid, "project_name": pname, "error": str(e)})
+```
+
+**教训：** 涉及批量删除的错误处理中，绝不能在事务回滚后访问 ORM 对象属性。
+
+---
+
+### Bug-016：504 Gateway Timeout——三层超时链同时不足（2026-03-31 夜）
+
+- **Type**: 因果
+- **Score**: 1.0
+- **Date**: 2026-03-31
+- **Status**: Active
+---
+**现象：** DeepSeek LLM 生成长文本章节（>2000 tokens），60s 后返回 504 Gateway Timeout。
+
+**根因链条（三层均不足）：**
+```
+浏览器 axios timeout = 120000ms（120s）    → 足够
+Nginx proxy_read_timeout = 60s             → 不足，60s 先到
+Uvicorn --timeout-keep-alive 未设置         → 依赖默认（5s?）
+```
+
+**修复（三层全部提升至 300s）：**
+1. `frontend/src/api/client.ts` → `timeout: 300000`
+2. `frontend/nginx.conf` → `proxy_read_timeout 300s`
+3. `app/Dockerfile` → `CMD ... --timeout-keep-alive 300`
+
+**验证：** 生成完整技术标章节 8 个，无超时。
+
+---
+
+### Bug-017：`confirmAllSections` 是空函数——后端 API 从未被调用（2026-03-31 夜）
+
+- **Type**: 因果
+- **Score**: 1.0
+- **Date**: 2026-03-31
+- **Status**: Active
+---
+**现象：** 前端点击"确认全部章节"，界面无变化，项目状态未推进到 `awaiting_pricing`。
+
+**根因：** `TechProposalView.vue` 中 `confirmAllSections` 是普通 `function`（非 `async`），内部只有 `ElMessage.warning`，没有调用任何后端 API，也没有 `router.push()`。
+
+**修复：**
+```typescript
+async function confirmAllSections() {
+  const allGenerated = sections.value.every(s => s.generated)
+  if (!allGenerated) { ElMessage.warning('请先生成所有章节'); return }
+  try {
+    await apiClient.post(`/v1/projects/${projectId}/advance-to-pricing`)
+    ElMessage.success('技术标已确认！进入定价流程')
+    await projectStore.fetchProjects()
+    router.push(`/projects/${projectId}/pricing`)
+  } catch (err: unknown) {
+    const errObj = err as { response?: { data?: { detail?: string } } }
+    ElMessage.error(errObj?.response?.data?.detail || '推进定价流程失败，请重试')
+  }
+}
+```
+
+---
+
+### Bug-018：Card 路由 `parsed`/`evaluating` 落入兜底分支——错误跳转到 /upload（2026-03-31 夜）
+
+- **Type**: 因果
+- **Score**: 1.0
+- **Date**: 2026-03-31
+- **Status**: Active
+---
+**现象：** 项目状态为 `parsed` 或 `evaluating` 时，点击卡片跳转到 `/projects/{id}/confirm`（上传页），而非 `/projects/{id}/evaluation`（评估页）。
+
+**根因：** `DashboardView.vue` 的 `handleCardClick` switch 中，`parsed` 和 `evaluating` 未被显式处理，落入 `default` 兜底分支。
+
+**修复：** 在 switch 中显式列出所有状态：
+```typescript
+case 'parsed':
+case 'evaluating':
+case 'evaluation_ready':
+case 'pending_boss_approval':
+case 'approved_by_specialist':
+  router.push(`/projects/${project.id}/evaluation`); break
+```
+
+**教训：** 使用 if-else 或精确覆盖的 switch，而不是用 `else` 兜底可能遗漏特定状态。
+
+---
+
+### Bug-019：Pydantic `dict[str, int]` 类型过窄——DeepSeek 返回嵌套 `prompt_tokens_details`（2026-03-31 夜）
+
+- **Type**: 因果
+- **Score**: 1.0
+- **Date**: 2026-03-31
+- **Status**: Active
+---
+**现象：** `GeneratedSectionResponse` Pydantic 模型校验返回 400：`Input should be a valid dictionary`。
+
+**根因：** DeepSeek 实际返回：
+```json
+{"prompt_tokens_details": {"cached_tokens": 192}}
+```
+`dict[str, int]` 类型的字段无法接受 value 为 `dict` 的条目。
+
+**修复：** `app/schemas/week3.py`：
+```python
+token_usage: dict[str, Any]   # 从 dict[str, int] 修正
+```
+
+---
+
+### Bug-020：Docker 重建后代码未生效——本地修改需要 `docker compose build`（2026-03-31 全天）
+
+- **Type**: 因果
+- **Score**: 1.0
+- **Date**: 2026-03-31
+- **Status**: Active
+---
+**现象：** 修改了 Vue 文件或 Python 文件，刷新浏览器但界面没有变化。
+
+**根因：** Docker 容器使用镜像层缓存代码，本地文件修改**不会**自动同步到容器内。必须重建才能使代码变更生效。
+
+**正确工作流：**
+```bash
+# 后端代码修改后
+docker compose build backend && docker compose up -d backend
+
+# 前端代码修改后
+docker compose build frontend && docker compose up -d frontend
+
+# 或者一次性全量重建（较慢）
+docker compose build && docker compose up -d
+```
+
+**教训：** 这是 Docker 基础概念，但容易在快速迭代中忽略。代码修改完成后必须 rebuild。
+
+---
+
+### 因果链-007：V3 Seeding Pipeline 重构——160+表格数据丢失根因（2026-04-14）
+
+- **Type**: 因果
+- **Score**: 1.0
+- **Date**: 2026-04-14
+- **Status**: Active
+---
+**触发事件：** 业务方要求历史标书批量入库，发现 docx_parser.py 原始实现只调用 `doc.paragraphs`，完全忽略 `doc.tables`，导致所有表格内容（资质清单、报价表）全部丢失。
+
+**因果链条：**
+```
+业务方要求历史标书入库（2026-04-14）
+  → 检查 docx_parser.py 实现
+    → 发现只解析 paragraphs，tables=[]（python-docx tables 属性被完全忽略）
+      → 160+张表格全部丢失（资质清单、报价表、评分标准表...）
+        → V3 重构：在 element 级别遍历 body 子元素
+          → 检测 tag=="p"（段落）和 tag=="tbl"（表格）
+            → 表格调用 TableBlockExtractor.from_docx_table() → Markdown
+              → Block(block_type="table") 混入 document 顺序
+```
+
+**根因：** `python-docx` 的 `Document.paragraphs` 和 `Document.tables` 是**两个独立集合**，单独遍历 paragraphs 会丢失所有表格。必须用 `doc.element.body` 遍历子元素才能恢复物理顺序。
+
+**教训：** 文档解析库的 `paragraphs` 属性永远只包含纯文本段落，任何表格数据都在独立的 `tables` 属性中。两者必须合并处理。
+
+---
+
+### 因果链-008：LLM API 529 限流雪崩——无退避重试导致永久失败（2026-04-14）
+
+- **Type**: 因果
+- **Score**: 1.0
+- **Date**: 2026-04-14
+- **Status**: Active
+---
+**触发事件：** V3 historical_chunker 的 Layer 3 LLM 洞察提取，深度并发调用 DeepSeek API，529 限流后全部重试打在一起，形成雪崩。
+
+**因果链条：**
+```
+V3 Pipeline LLM 洞察提取（2026-04-14）
+  → ThreadPoolExecutor 并发提交多个 API 请求
+    → 同一时刻多个请求收到 529
+      → 无 jitter 的等间隔重试：全部同时重试
+        → 再次全部 529 → 永久雪崩
+          → 解决：Exponential Backoff + Full Jitter
+            → wait = 2^attempt * 1.0 * random.random()
+            → 第1次重试：随机 [0, 2s]，第2次：[0, 4s]，第3次：[0, 8s]
+              → 错开重试窗口，避免雪崩
+```
+
+**设计模式（固化）：**
+```python
+# ✅ 正确：Exponential Backoff + Full Jitter
+wait = (2 ** attempt) * 1.0 * random.random()
+time.sleep(wait)
+
+# ❌ 错误：无 jitter 的等间隔退避（会雪崩）
+time.sleep(2 ** attempt)
+
+# ❌ 错误：无退避的立即重试（完全无效）
+continue
+```
+
+**教训：** 多并发实例场景下，无 jitter 的退避重试等于没有重试。Full Jitter（随机抖动）是防止多实例同时重试的唯一有效手段。
+
+---
+
+### ⚠️ 紧急：w013-w018 迁移文件全部 untracked（2026-04-14）
+
+- **Type**: 环境
+- **Score**: 1.0
+- **Date**: 2026-04-14
+- **Status**: Active（紧急）
+---
+**现象：** `git status` 显示 w013~w018 共6个迁移文件全部为 `??`（untracked）。
+
+**根因：** 这些迁移文件从未被 `git add`，代码一直在工作目录中但未提交。
+
+**影响范围：**
+- `project_sections` 表（w013）— 已在 app/models/project_section.py 定义并使用
+- `specialist_price` 字段（w014）— 已在 Project 模型中使用
+- `knowledge_chunks` 12个新字段（w015）— 已在 retriever.py/generator.py 引用
+- `historical_tenders` 表（w016）— 已在 seeding loaders 中引用
+- `historical_bids` 表（w017）— 已在 seeding loaders 中引用
+- `internal_postmortems` 表（w018）— Week6 相关
+
+**立即修复：**
+```bash
+cd D:/tis_project && git add alembic/versions/w013*.py alembic/versions/w014*.py alembic/versions/w015*.py alembic/versions/w016*.py alembic/versions/w017*.py alembic/versions/w018*.py && git commit -m "feat: add w013-w018 migrations (project_sections, specialist_price, knowledge_chunks expand, historical_tenders, historical_bids, internal_postmortems)"
+```
+
+**教训：** 新创建的迁移文件必须立即 `git add` 并 commit，不能等到功能完全验证完毕才提交。迁移文件是代码的一部分，不是"最后才提交"的东西。

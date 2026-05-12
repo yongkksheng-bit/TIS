@@ -1,6 +1,7 @@
 # 项目事实 | 龙虾记忆
 
 > **客观事实** - 数据库表名、接口路由、配置参数等客观信息
+> **上次更新：2026-04-14** - V3 Seeding Pipeline + Week3/4 双轨 RAG + w013-w018 迁移审计
 
 ---
 
@@ -20,6 +21,156 @@
 ---
 
 ## 项目客观事实
+
+### V3 Seeding Pipeline 架构（2026-04-14 新增）
+
+- **Type**: 事实
+- **Score**: 1.0
+- **Date**: 2026-04-14
+- **Status**: Active
+---
+**docx_parser.py V3（337行）：**
+- `Block(block_type: "paragraph"|"table", content: str)` — 文档物理顺序块
+- `DOCXParseResult.blocks: list[Block]` — 段落+表格原始顺序（新增）
+- `DOCXParseResult.paragraphs: list[str]` — 向后兼容旧接口
+- `TableBlockExtractor.from_docx_table(tbl)` — python-docx Table → Markdown
+- `TableBlockExtractor.is_meaningful(min_content_chars=5)` — 过滤装饰表格
+
+**historical_chunker.py V3（697行）：**
+- `HistoricalChunker(min_segment_chars=500, chunk_size=600, overlap=80, enable_llm_insights=False)`
+- Layer 1 Boilerplate：`BOILERPLATE_KEYWORDS`（49个）→ 丢弃；`GENERATIVE_KEYWORDS`（40个）→ 保留
+- Layer 3 LLM：`extract_llm_insights(text)` → `{core_pain_points, technical_indicators, competitive_advantages}`
+- Patch 1：`Semaphore(5)` + Exponential Backoff + Full Jitter
+- Patch 2：`block_type=="table"` 时跳过 sliding window，原子 emit
+- Patch 3：`chunk_metadata["has_table"] = True/False`
+- Patch 4：`ChunkDict.__slots__` = 纯 Python 类型 → JSONB 安全
+
+---
+
+### w013-w018 迁移文件清单（2026-04-14 审计）
+
+- **Type**: 事实
+- **Score**: 1.0
+- **Date**: 2026-04-14
+- **Status**: ⚠️ Active（全部 untracked in git）
+---
+**⚠️ 紧急：所有迁移文件 untracked，需立即 `git add`**
+
+| 文件 | 内容 | 行数 |
+|------|------|------|
+| `w013_create_project_sections.py` | `project_sections` 表（UQ: project_id+section_name，FK CASCADE） | 38 |
+| `w014_add_specialist_price.py` | `specialist_price` 字段添加到 `projects` 表 | 28 |
+| `w015_expand_knowledge_chunks.py` | `knowledge_chunks` 12个新字段（source_type, win_signal, scoring_dimension_tags ARRAY...） | 74 |
+| `w016_create_historical_tenders.py` | `historical_tenders` 表（采购计划编号、预算、中标单位） | 66 |
+| `w017_create_historical_bids.py` | `historical_bids` 表（报价、中标情况、price_gap） | 60 |
+| `w018_create_internal_postmortems.py` | `internal_postmortems` 表（流标原因分析、中标DNA） | 71 |
+
+**w015 knowledge_chunks 新增字段：**
+```python
+source_type: str           # "historical_tender" | "historical_bid" | "standard_cert"
+source_id: int
+source_label: str
+chunk_index: int
+win_signal: str             # "positive" | "negative" | "neutral"
+scoring_dimension_tags: ARRAY[str]  # ["食材溯源", "冷链管理"]
+region_tags: ARRAY[str]
+project_type_tags: ARRAY[str]
+is_price_sensitive: bool
+token_count: int
+```
+
+---
+
+### Deep Bid Analyzer + Template Reverse Engineer（2026-04-14 新增）
+
+- **Type**: 事实
+- **Score**: 1.0
+- **Date**: 2026-04-14
+- **Status**: Active
+---
+**scripts/deep_bid_analysis/ 目录：**
+
+| 文件 | 内容 | 行数 |
+|------|------|------|
+| `deep_bid_analyzer.py` | Map-Reduce DeepSeek API 分析，16章46KB报告 | 223 |
+| `template_reverse_engineer.py` | DOCX TOC 提取，785段落分类为boilerplate/generative | 535 |
+| `bid_template_structure.json` | 完整段落结构（405KB，785条目） | — |
+| `V2_bid_assembly_logic.md` | 投标组装逻辑文档（188KB） | — |
+
+**Template Reverse Engineer 段落分类规则：**
+- Boilerplate（静态模板）：授权/承诺函/证明/证书/复印件/盖章/资质/投标函/封面/扉页/目录...
+- Generative（动态生成）：服务方案/配送方案/应急方案/质量保障/食品安全/卫生管理...
+
+**Deep Bid Analyzer 三维度分析：**
+1. 核心痛点（Core Pain Points）：招标方强调的关键需求/约束/风险
+2. 技术响应指标（Technical Response Indicators）：投标方需具体回应的指标
+3. 竞争优势（Competitive Advantages）：可突出的差异化优势
+
+---
+
+### Week3 双轨 RAG 实现（2026-04-14 确认）
+
+- **Type**: 事实
+- **Score**: 1.0
+- **Date**: 2026-04-14
+- **Status**: Active
+---
+**retriever.py（421行）双轨检索：**
+```python
+retrieve_positive_samples(win_signal="positive")  # 中标段落的chunk
+retrieve_negative_samples(win_signal="negative")   # 流标段落的chunk
+_retrieve_historical_pgvector(win_signal=...)     # pgvector similarity search
+```
+
+**generator.py（316行）双轨生成：**
+```python
+use_dual_track_rag: bool      # 参数，控制是否启用双轨
+_build_dual_track_context()   # 调用 positive + negative retrievers
+build_chunk_context()         # 组装 RAG context
+```
+
+**text_chunker.py（342行）HistoricalChunker：**
+- `chunk_by_dimensions(text, dimension_names)` → `list[ChunkNode]`
+- `_split_by_dimensions()` → 按评分维度切分文本
+- `_sliding_window()` → 滑动窗口切分
+
+---
+
+### Week4 博弈定价实现（2026-04-14 确认）
+
+- **Type**: 事实
+- **Score**: 1.0
+- **Date**: 2026-04-14
+- **Status**: Active
+---
+**price_benchmark.py（246行）MarketHeatContext：**
+```python
+class MarketHeatContext:
+    expected_competitive_price: float  # 市场预期价格
+    def has_data(self) -> bool         # 是否有真实数据
+```
+
+**game_theory.py（298行）calculate_optimal_price：**
+```python
+market_context: Optional[MarketHeatContext]  # 可选的市场热度上下文
+eq_price = self.market_context.expected_competitive_price  # 使用市场均衡价格
+```
+
+---
+
+### TrashView.vue 回收站视图（2026-04-14 新增）
+
+- **Type**: 事实
+- **Score**: 0.9
+- **Date**: 2026-04-14
+- **Status**: Active
+---
+- **文件：** `frontend/src/views/TrashView.vue`（278行）
+- **功能：** 独立回收站页面，显示所有 `is_deleted=True` 项目
+- **操作：** 恢复项目 / 永久销毁 / 清空全部
+- **API：** `GET /api/projects/trash` → 列表；`POST /{id}/restore` → 恢复；`DELETE /{id}/hard-delete` → 销毁
+
+---
 
 ### Docker 统一物理拓扑（2026-03-30 修正）
 
@@ -424,3 +575,175 @@ Row5: 采购计划编号 [span=12] + 采购项目编号 [span=12]
 - `deleteLock = Set<number>` debounce 防重复提交
 - `ElMessageBox.confirm` 确认框：`"确定移入回收站吗？移入后您可以重新上传同名项目。"`
 - 删除成功后 `ElMessage.success('已移入回收站，可重新上传同名项目')`
+
+---
+
+### Week5 形式审查端点（2026-03-31 新增）
+
+- **Type**: 事实
+- **Score**: 1.0
+- **Date**: 2026-03-31
+- **Status**: Active
+---
+**路由文件：** `app/api/v1/endpoints/formal_review.py`
+
+**端点清单：**
+| 方法 | 路径 | 功能 |
+|------|------|------|
+| POST | `/projects/{id}/formal-review/initiate` | 生成审查清单（FormalReviewEngine） |
+| GET | `/projects/{id}/formal-review/items` | 获取所有审查项（支持 status/risk_level 过滤） |
+| GET | `/projects/{id}/formal-review/status` | 聚合状态（fatal/warning/cconfirmed 计数） |
+| POST | `/formal-review-items/{id}/confirm` | 专员确认某项 |
+| POST | `/formal-review-items/{id}/correct` | 标记为已修正 |
+| POST | `/formal-review-items/{id}/delete` | 标记为已删除 |
+| POST | `/projects/{id}/formal-review/manual-add` | 手动添加审查项 |
+| POST | `/projects/{id}/final-documents/generate` | 生成最终投标 Word 文档 |
+| POST | `/projects/{id}/abandon` | 归档项目至废弃草稿 |
+| POST | `/projects/{id}/advance-to-pricing` | 确认技术标并推进至定价博弈 |
+
+**advance-to-pricing 业务规则：**
+- 允许从 `generating_documents` 或 `awaiting_pricing` 状态推进
+- 目标状态：`awaiting_pricing`
+- 前端 TechProposalView.vue 的"确认全部章节"按钮调用此接口
+
+---
+
+### 三层超时链配置（2026-03-31 修正）
+
+- **Type**: 事实
+- **Score**: 1.0
+- **Date**: 2026-03-31
+- **Status**: Active
+---
+**背景：** DeepSeek LLM 生成长文本章节超过 60s，504 Gateway Timeout 触发。
+
+**三层配置（全部提升至 300s）：**
+
+| 层次 | 组件 | 配置项 | 值 |
+|------|------|--------|-----|
+| 第一层 | 浏览器/axios | `client.ts timeout` | `300000` ms |
+| 第二层 | Nginx | `proxy_read_timeout` | `300s` |
+| 第三层 | Uvicorn | `--timeout-keep-alive 300` | `300s` |
+
+**Nginx 配置（frontend/nginx.conf）：**
+```nginx
+proxy_connect_timeout 300s;
+proxy_send_timeout 300s;
+proxy_read_timeout 300s;
+```
+
+**Uvicorn CMD（app/Dockerfile）：**
+```dockerfile
+CMD ["sh", "-c", "mkdir -p /tmp/tis_uploads && alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 300"]
+```
+
+---
+
+### DeepSeek LLM 错误分类规范（2026-03-31 新增）
+
+- **Type**: 事实
+- **Score**: 1.0
+- **Date**: 2026-03-31
+- **Status**: Active
+---
+**错误分类（三层上抛 + HTTP 状态码映射）：**
+
+**llm_mock.py（LLM 调用层）：**
+```python
+if e.code == 401: raise RuntimeError("DeepSeek API 认证失败：API Key 无效或已过期")
+elif e.code == 429: raise RuntimeError("DeepSeek API 请求超出限速（429），请稍后重试")
+elif e.code == 500: raise RuntimeError("DeepSeek 服务器内部错误（500），请稍后重试")
+else: raise RuntimeError(f"DeepSeek 请求失败（{e.code}）：{e}")
+```
+
+**rag.py（API 端点层）：**
+```python
+except ValueError as e:    raise HTTPException(status_code=400, detail=str(e))
+except RuntimeError as e:  raise HTTPException(status_code=503, detail=f"大模型服务异常：{e}")
+except Exception as e:     raise HTTPException(status_code=500, detail=f"技术标生成失败：{e}")
+```
+
+**llm_mock.py 超时参数：** `urlopen(timeout=120)` — 从 60s 提升至 120s
+
+---
+
+### qualification_extractor.py — LLM 资质穷举提取（2026-03-31 新增）
+
+- **Type**: 事实
+- **Score**: 1.0
+- **Date**: 2026-03-31
+- **Status**: Active
+---
+**文件：** `app/core/week1_document/qualification_extractor.py`
+
+**核心函数：** `extract_qualifications_with_llm(pdf_text, project_name)`
+
+**4 维度法务级 Prompt：**
+1. 基础法定资质 — 政采项目提取《政府采购法》第22条；军采特有资质
+2. 项目特定资格 — 行业特许证明（如《食品经营许可证》）及特定政策要求
+3. 实质性条款 — 标注"★"、"必须"、"否则视为无效投标"的硬性资质承诺
+4. 终极校验 — 对齐"资格性审查表"、"符合性审查表"、"废标条款"
+
+**输出格式（JSON）：**
+```json
+{
+  "qualifications": [{"type","title","description","source_section"}],
+  "is_military_procurement": true/false
+}
+```
+
+**下游映射：** 提取结果标准化为 `{cert_code, cert_name, is_mandatory, description, type, source_section}`
+
+**LLM 调用工厂：** `get_llm()`（遵守 `USE_MOCK_LLM` 环境变量，不硬编码 MockLLM）
+
+---
+
+### Pydantic V2 `dict[str, Any]` 宽松类型规范（2026-03-31 修正）
+
+- **Type**: 事实
+- **Score**: 1.0
+- **Date**: 2026-03-31
+- **Status**: Active
+---
+**问题：** DeepSeek 返回的 `token_usage` 包含嵌套结构 `{"prompt_tokens_details": {"cached_tokens": 192}}`，而 Pydantic V2 字段 `dict[str, int]` 无法接受嵌套 dict。
+
+**修复：** `GeneratedSectionResponse.token_usage: dict[str, Any]` — 改为宽松类型。
+
+**涉及文件：** `app/schemas/week3.py`
+
+```python
+token_usage: dict[str, Any]   # 从 dict[str, int] 修正
+```
+
+---
+
+### Dashboard 状态互斥 Tab 规范（2026-03-31 修正）
+
+- **Type**: 事实
+- **Score**: 1.0
+- **Date**: 2026-03-31
+- **Status**: Active
+---
+**状态集合定义（精确互斥）：**
+```typescript
+const PENDING_STATUSES   = new Set(['created', 'uploaded', 'parsing'])
+const IN_PROGRESS_STATUSES = new Set([
+  'parsed', 'evaluating', 'evaluation_ready',
+  'pending_boss_approval', 'approved_by_specialist',
+  'generating_documents', 'awaiting_pricing', 'awaiting_review',
+])
+const COMPLETED_STATUSES  = new Set(['completed'])
+const DISCARDED_STATUSES  = new Set(['discarded', 'terminated_by_boss'])
+```
+
+**Tab 计数必须用 `Set.has()` 精确匹配，严禁使用排除法**（`!['completed','discarded'].includes()` 会与 pending 重叠）。
+
+**Dashboard 路由分发（基于 status）：**
+```typescript
+'created' | 'uploaded' | 'parsing'     → /confirm
+'parsed'  | 'evaluating' | 'evaluation_ready'
+  | 'pending_boss_approval' | 'approved_by_specialist' → /evaluation
+'generating_documents' | 'awaiting_pricing'
+  | 'awaiting_review' | 'completed'   → /tech-proposal
+default                            → /confirm（兜底）
+```
