@@ -6,13 +6,17 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
 from app.models.project import Project
+from app.models.enums import ProjectStatus
 from app.models.formal_review import FormalReviewItem, AbandonedDraft, FinalBidDocument
 from app.models.pricing import PricingDecision, CostEstimate
 from app.models.tech_proposal import TechProposalTask
+from app.models.project_section import ProjectSection
+from app.models.ocr import OcrExtraction
 from app.core.week5_formal_review.formal_review_engine import FormalReviewEngine
 from app.core.week5_formal_review.word_generator import FinalBidWordGenerator
 from app.schemas.week5 import (
@@ -23,6 +27,8 @@ from app.schemas.week5 import (
     ManualReviewItemRequest,
     FinalDocGenerateResponse,
     AbandonedDraftResponse,
+    DocumentPackage,
+    DocumentPackagesResponse,
 )
 from app.schemas.common import ResponseWrapper
 
@@ -359,7 +365,7 @@ def generate_final_document(
     # 6. Save FinalBidDocument record
     doc_record = FinalBidDocument(
         project_id=project_id,
-        document_type='final_bid',
+        document_type='complete',
         file_path=result["file_path"],
         file_size=result.get("file_size"),
         generated_by=1,
@@ -418,3 +424,295 @@ def abandon_project(
     )
 
     return AbandonedDraftResponse.model_validate(draft)
+
+
+# ─── 10. GET /projects/{project_id}/document-packages ────────────────────────
+
+@router.get("/projects/{project_id}/document-packages")
+def get_document_packages(
+    project_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Return document package readiness for the formal review packaging checklist.
+
+    Checks five areas:
+    - 技术标 (tech proposal): ProjectSection count > 0
+    - 商务标 (business proposal): OcrExtraction count > 0
+    - 定价决策 (pricing decision): PricingDecision with status='decided' exists
+    - 封装清单 (packaging list): FinalBidDocument with generation_status='completed' exists
+    - 电子签章 (electronic seal): not yet integrated → always False
+    """
+    _get_project_or_404(db, project_id)
+
+    # Tech proposal readiness
+    tech_count = (
+        db.query(ProjectSection)
+        .filter(ProjectSection.project_id == project_id)
+        .count()
+    )
+    tech_ready = tech_count > 0
+
+    # Business proposal readiness
+    biz_count = (
+        db.query(OcrExtraction)
+        .filter(OcrExtraction.project_id == project_id)
+        .count()
+    )
+    biz_ready = biz_count > 0
+
+    # Pricing decision readiness
+    pricing = (
+        db.query(PricingDecision)
+        .filter(
+            PricingDecision.project_id == project_id,
+            PricingDecision.status == 'decided',
+        )
+        .first()
+    )
+    pricing_ready = pricing is not None
+
+    # Final bid document readiness
+    final_doc = (
+        db.query(FinalBidDocument)
+        .filter(
+            FinalBidDocument.project_id == project_id,
+            FinalBidDocument.generation_status == 'completed',
+        )
+        .first()
+    )
+    packaging_ready = final_doc is not None
+
+    # Electronic seal — not yet integrated
+    seal_ready = False
+
+    packages = [
+        DocumentPackage(
+            id=1,
+            type="技术标",
+            desc="技术方案正文（5章节）" if tech_ready else "技术标未生成",
+            ready=tech_ready,
+        ),
+        DocumentPackage(
+            id=2,
+            type="商务标",
+            desc="商务资质及证照" if biz_ready else "商务标未生成",
+            ready=biz_ready,
+        ),
+        DocumentPackage(
+            id=3,
+            type="定价决策",
+            desc="最终报价及决策依据" if pricing_ready else "定价未完成",
+            ready=pricing_ready,
+        ),
+        DocumentPackage(
+            id=4,
+            type="封装清单",
+            desc="投标文件封装清单" if packaging_ready else "标书未生成",
+            ready=packaging_ready,
+        ),
+        DocumentPackage(
+            id=5,
+            type="电子签章",
+            desc="电子签章文件",
+            ready=seal_ready,
+        ),
+    ]
+
+    return DocumentPackagesResponse(
+        project_id=project_id,
+        packages=packages,
+    )
+
+
+# ─── 11. GET /projects/{project_id}/draft-preview ─────────────────────────────
+
+@router.get("/projects/{project_id}/draft-preview")
+def get_draft_preview(
+    project_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Return a summary of the project state for the formal review initial screen.
+    """
+    _get_project_or_404(db, project_id)
+
+    project = db.get(Project, project_id)
+
+    # Tech proposal
+    tech_proposal = (
+        db.query(TechProposalTask)
+        .filter(
+            TechProposalTask.project_id == project_id,
+            TechProposalTask.status == 'confirmed',
+        )
+        .first()
+    )
+
+    # Pricing decision
+    pricing = (
+        db.query(PricingDecision)
+        .filter(
+            PricingDecision.project_id == project_id,
+            PricingDecision.status == 'decided',
+        )
+        .order_by(PricingDecision.id.desc())
+        .first()
+    )
+
+    # Review items
+    review_items = (
+        db.query(FormalReviewItem)
+        .filter(FormalReviewItem.project_id == project_id)
+        .all()
+    )
+
+    fatal_count = sum(1 for i in review_items if i.risk_level == 'fatal')
+    warning_count = sum(1 for i in review_items if i.risk_level == 'warning')
+    passed_count = sum(1 for i in review_items if i.system_status == 'passed')
+
+    return ResponseWrapper(data={
+        "project_name": project.project_name if project else None,
+        "owner_unit": project.owner_unit if project else None,
+        "bid_open_date": project.bid_open_date.isoformat() if project and project.bid_open_date else None,
+        "tech_proposal_status": tech_proposal.status if tech_proposal else None,
+        "pricing_final": float(pricing.boss_final_price) if pricing and pricing.boss_final_price else None,
+        "review_summary": {
+            "total": len(review_items),
+            "fatal": fatal_count,
+            "warning": warning_count,
+            "passed": passed_count,
+        },
+    })
+
+
+# ─── 12. POST /projects/{project_id}/checklists/init ─────────────────────────
+
+@router.post("/projects/{project_id}/checklists/init")
+def init_checklists(
+    project_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Alias for /formal-review/initiate — generates the formal review checklist.
+    Provided to align with frontend routing expectations.
+    Maps field names to match frontend expectations:
+    - total_items → itemsCreated
+    - fatal_count → fatalCount
+    """
+    result = initiate_formal_review(project_id, db)
+    # Re-wrap with frontend-expected field names
+    raw = result.data if hasattr(result, 'data') else result
+    return ResponseWrapper(data={
+        "itemsCreated": raw.get("total_items", 0),
+        "fatalCount": raw.get("fatal_count", 0),
+    })
+
+
+# ─── 13. PUT /projects/{project_id}/checklists/{item_id} ─────────────────────
+
+@router.put("/projects/{project_id}/checklists/{item_id}")
+def update_checklist_item(
+    project_id: int,
+    item_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+):
+    """
+    Unified update endpoint for a checklist item.
+
+    Actions:
+    - 'confirm' → mark item as confirmed
+    - 'correct' → mark item as corrected with evidence
+    - 'delete'  → mark item as deleted
+    """
+    item = _get_review_item_or_404(db, item_id)
+    if item.project_id != project_id:
+        raise HTTPException(status_code=400, detail="Item does not belong to this project")
+
+    action = data.get("action")
+    notes = data.get("notes")
+
+    if action == "confirm":
+        item.specialist_status = "confirmed"
+        item.confirmed_by = 1
+        item.confirmed_at = datetime.now(timezone.utc)
+        if notes:
+            item.specialist_notes = notes
+    elif action == "toggle":
+        # Revert confirmed/corrected back to pending
+        item.specialist_status = "pending"
+        item.confirmed_by = None
+        item.confirmed_at = None
+        if notes:
+            item.specialist_notes = notes
+    elif action == "correct":
+        item.specialist_status = "corrected"
+        # Frontend sends evidence + notes merged in 'notes' field with " | " separator
+        evidence_or_notes = data.get("corrected_evidence") or notes or ""
+        if " | " in evidence_or_notes and not data.get("corrected_evidence"):
+            parts = evidence_or_notes.split(" | ", 1)
+            item.corrected_evidence = parts[0]
+            item.specialist_notes = parts[1] if len(parts) > 1 else ""
+        else:
+            item.corrected_evidence = evidence_or_notes
+            item.specialist_notes = notes or ""
+    elif action == "delete":
+        item.specialist_status = "deleted"
+        if notes:
+            item.specialist_notes = notes
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
+    db.commit()
+    db.refresh(item)
+    return ResponseWrapper(data=FormalReviewItemResponse.model_validate(item))
+
+
+# ─── 14. POST /projects/{project_id}/complete ────────────────────────────────
+
+@router.post("/projects/{project_id}/complete")
+def complete_review(
+    project_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Mark formal review as complete for a project.
+    Checks that no fatal items remain pending before allowing completion.
+    """
+    project = _get_project_or_404(db, project_id)
+
+    can_generate, blocking_reason = _check_can_generate(db, project_id)
+    if not can_generate:
+        raise HTTPException(status_code=400, detail=blocking_reason)
+
+    project.status = ProjectStatus.COMPLETED.value
+    db.commit()
+
+    return ResponseWrapper(data={"project_id": project_id, "newStatus": "completed"})
+
+
+# ─── 15. GET /projects/{project_id}/final-documents/{doc_id}/download ────────
+
+@router.get("/projects/{project_id}/final-documents/{doc_id}/download")
+def download_final_document(
+    project_id: int,
+    doc_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Download a generated final bid document.
+    """
+    doc = db.get(FinalBidDocument, doc_id)
+    if not doc or doc.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    file_path = doc.file_path
+    if not file_path or not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="File not found on server")
+
+    return FileResponse(
+        path=file_path,
+        filename=os.path.basename(file_path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
