@@ -30,6 +30,7 @@ from app.models.tech_proposal import TechProposalTask, ScoringIndex, GenerationL
 from app.models.pricing import CostEstimate, PricingDecision, PriceHistory
 from app.models.formal_review import FormalReviewItem, AbandonedDraft, FinalBidDocument
 from app.models.review import BidOutcome, WinningDNA, DisqualificationTrap, DraftRevival, KnowledgeEvolutionLog
+from app.models.historical import HistoricalTender, HistoricalBid, InternalPostmortem
 
 __all__ = [
     "Base",
@@ -75,4 +76,7 @@ __all__ = [
     "DisqualificationTrap",
     "DraftRevival",
     "KnowledgeEvolutionLog",
+    "HistoricalTender",
+    "HistoricalBid",
+    "InternalPostmortem",
 ]

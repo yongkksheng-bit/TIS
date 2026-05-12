@@ -44,7 +44,7 @@ class PricingDecision(Base):
     system_suggested_optimal: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=True)
     finance_suggested_price: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=True)
     finance_suggestion_reason: Mapped[str] = mapped_column(Text, nullable=True)
-    boss_final_price: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False)
+    boss_final_price: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=True)
     boss_decision_reason: Mapped[str] = mapped_column(Text, nullable=True)
     deviation_from_system: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=True)
     deviation_reason_category: Mapped[str] = mapped_column(String(50), nullable=True)
@@ -53,6 +53,9 @@ class PricingDecision(Base):
     limit_violation_warning: Mapped[str] = mapped_column(Text, nullable=True)
     game_theory_analysis: Mapped[dict] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default='decided')
+    specialist_price: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=True)
+    specialist_notes: Mapped[str] = mapped_column(Text, nullable=True)
+    action_type: Mapped[str] = mapped_column(String(30), nullable=True)
 
 
 class PriceHistory(Base):

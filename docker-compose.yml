@@ -66,6 +66,8 @@ services:
     environment:
       HF_HOME: /app/data/huggingface_cache
       HF_HUB_DISABLE_SYMLINKS: "1"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
     volumes:
       - ./data/huggingface_cache:/app/data/huggingface_cache
     ports:
@@ -98,6 +100,8 @@ services:
     volumes:
       - ./.env:/app/.env:ro
       - uploads_data:/tmp/tis_uploads
+      - ./data/historical_documents:/data/historical_documents:ro
+      - ./scripts:/app/scripts:rw
     ports:
       - "8000:8000"
     depends_on:
@@ -123,7 +127,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_USE_MOCK: "false"
-        VITE_API_BASE_URL: "/api"
+        VITE_API_BASE_URL: ""
     container_name: tis_frontend
     ports:
       - "3000:80"

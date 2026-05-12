@@ -26,37 +26,41 @@
           </el-menu-item>
           <el-divider class="my-2" />
           <div class="nav-section-label">工作流</div>
-          <el-menu-item index="/projects/new/upload">
+          <el-menu-item :index="'/projects/' + currentId + '/upload'">
             <el-icon><UploadFilled /></el-icon>
             <span>上传标书</span>
           </el-menu-item>
-          <el-menu-item index="/projects/new/confirm">
+          <el-menu-item :index="'/projects/' + currentId + '/confirm'" :disabled="currentId === 'new'">
             <el-icon><DocumentChecked /></el-icon>
             <span>资格确认</span>
           </el-menu-item>
-          <el-menu-item index="/projects/new/evaluation">
+          <el-menu-item :index="'/projects/' + currentId + '/evaluation'" :disabled="currentId === 'new'">
             <el-icon><DataAnalysis /></el-icon>
             <span>评估分析</span>
           </el-menu-item>
-          <el-menu-item index="/projects/new/tech-proposal">
+          <el-menu-item :index="'/projects/' + currentId + '/tech-proposal'" :disabled="currentId === 'new'">
             <el-icon><Reading /></el-icon>
             <span>技术标生成</span>
           </el-menu-item>
-          <el-menu-item index="/projects/new/pricing">
+          <el-menu-item :index="'/projects/' + currentId + '/business-proposal'" :disabled="currentId === 'new'">
+            <el-icon><Stamp /></el-icon>
+            <span>商务标生成</span>
+          </el-menu-item>
+          <el-menu-item :index="'/projects/' + currentId + '/pricing'" :disabled="currentId === 'new'">
             <el-icon><Money /></el-icon>
             <span>博弈定价</span>
           </el-menu-item>
-          <el-menu-item index="/projects/new/formal-review">
+          <el-menu-item :index="'/projects/' + currentId + '/formal-review'" :disabled="currentId === 'new'">
             <el-icon><Finished /></el-icon>
             <span>形式审查</span>
           </el-menu-item>
-          <el-menu-item index="/projects/new/output">
+          <el-menu-item :index="'/projects/' + currentId + '/output'" :disabled="currentId === 'new'">
             <el-icon><Download /></el-icon>
             <span>最终输出</span>
           </el-menu-item>
           <el-divider class="my-2" />
           <div class="nav-section-label">管理与复盘</div>
-          <el-menu-item index="/projects/new/review">
+          <el-menu-item :index="'/projects/' + currentId + '/review'" :disabled="currentId === 'new'">
             <el-icon><TrendCharts /></el-icon>
             <span>复盘与洞察</span>
           </el-menu-item>
@@ -70,6 +74,8 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import {
   HomeFilled,
@@ -77,6 +83,7 @@ import {
   DocumentChecked,
   DataAnalysis,
   Reading,
+  Stamp,
   Money,
   Finished,
   Download,
@@ -85,6 +92,15 @@ import {
 } from '@element-plus/icons-vue'
 
 const authStore = useAuthStore()
+const route = useRoute()
+
+// Dynamic project ID for sidebar workflow links — falls back to 'new' when no project is active
+const currentId = computed(() => {
+  const raw = route.params.id
+  if (!raw) return 'new'
+  const parsed = Number(raw)
+  return isNaN(parsed) ? 'new' : String(parsed)
+})
 </script>
 
 <style scoped>

@@ -58,6 +58,11 @@ class Project(Base, TimestampMixin):
     )
 
     # Relationships
+    # Sections stored in ProjectSection (replaces JSON in TechProposalTask.generated_content)
+    sections: Mapped[List["ProjectSection"]] = relationship(
+        "ProjectSection", back_populates="project", cascade="all, delete-orphan"
+    )
+
     tender_documents: Mapped[List["TenderDocument"]] = relationship(
         "TenderDocument", back_populates="project", cascade="all, delete-orphan"
     )
@@ -75,3 +80,4 @@ class Project(Base, TimestampMixin):
 # Import at bottom to avoid circular imports
 from app.models.document import TenderDocument, BidDocument, DocumentImage
 from app.models.ocr import OcrExtraction
+from app.models.project_section import ProjectSection

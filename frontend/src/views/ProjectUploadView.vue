@@ -52,8 +52,10 @@
         <div class="flex items-center gap-3">
           <el-icon class="text-blue-500" :size="24"><Loading /></el-icon>
           <div>
-            <p class="font-medium">AI 正在解析招标文件...</p>
-            <p class="text-sm text-gray-500 mt-1">预计需要 1-2 秒</p>
+            <p class="font-medium">{{ parsingProgress < 85 ? 'AI 正在解析招标文件...' : '正在深度提取法务与特定资质...' }}</p>
+            <p class="text-sm text-gray-500 mt-1">
+              {{ parsingProgress < 85 ? '预计需要 1-2 秒' : '大模型处理时间较长，请耐心等待（约需 1-2 分钟）...' }}
+            </p>
           </div>
         </div>
         <el-progress :percentage="parsingProgress" :stroke-width="8" class="mt-3" />
@@ -96,18 +98,17 @@ async function startParsing() {
 
   let interval: ReturnType<typeof setInterval> | null = null
   try {
-    // Step 1: Create project via API
+    // Step 1: Create initial project
     const createRes = await apiClient.post<{ id: number }>('/projects', {
       project_name: '待解析项目',
       owner_unit: '未知',
     })
     const projectId = (createRes as unknown as { id: number }).id
 
-    // Step 2: Upload PDF with progress simulation
+    // Step 2: Upload PDF
     const formData = new FormData()
     formData.append('file', selectedFile.value)
 
-    // Simulate progress while uploading
     interval = setInterval(() => {
       parsingProgress.value = Math.min(parsingProgress.value + Math.floor(Math.random() * 15) + 5, 85)
     }, 300)
@@ -119,10 +120,43 @@ async function startParsing() {
     if (interval) clearInterval(interval)
     parsingProgress.value = 100
 
-    setTimeout(() => {
+    // ── Step 3: Handle pending clone (annual_renewal) ───────────────────────
+    const pending = projectStore.pendingClone
+    if (pending?.cloneType === 'annual_renewal') {
+      // Fetch project to get extracted plan_code
+      const projData = await apiClient.get(`/projects/${projectId}`) as Record<string, unknown>
+      const planCode = (projData as any)?.plan_code || null
+      // Extract year from plan_code (e.g. "441301-2025-03605" → "2025")
+      let year: string | undefined
+      if (planCode) {
+        const m = planCode.match(/20\d{2}/)
+        year = m ? m[0] : undefined
+      }
+      // Clone: creates new project with year suffix and new plan_code
+      const cloneRes = await apiClient.post(`/projects/${pending.sourceProjectId}/clone`, {
+        clone_type: 'annual_renewal',
+        plan_code: planCode,
+        year,
+      }) as { data: { new_project_id: number; new_project_name: string } }
+      const clonedId = (cloneRes as any).data.new_project_id
+
+      // Upload PDF to the cloned project
+      const formDataClone = new FormData()
+      formDataClone.append('file', selectedFile.value!)
+      await apiClient.post(`/projects/${clonedId}/upload`, formDataClone, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+
+      projectStore.clearPendingClone()
+      ElMessage.success(`已创建新一期招标项目：${(cloneRes as any).data.new_project_name}`)
       isParsing.value = false
-      router.push(`/projects/${projectId}/confirm`)
-    }, 300)
+      router.push(`/projects/${clonedId}/confirm`)
+      return
+    }
+
+    // ── Step 3b: Normal flow — navigate to confirm page ─────────────────
+    isParsing.value = false
+    router.push(`/projects/${projectId}/confirm`)
   } catch (err) {
     isParsing.value = false
     if (interval) clearInterval(interval)
@@ -132,39 +166,36 @@ async function startParsing() {
       const dupCode = errDetail?.duplicate_code || ''
       const dupMsg = dupCode ? ` (${dupCode})` : ''
       await ElMessageBox.confirm(
-        `检测到系统已存在该项目：【${existingName}】${dupMsg}。\n\n如果这是流标后的重新招标，请点击【确认作为二次投标】放行上传。`,
-        '项目重复 — 二次投标确认',
+        `检测到系统已存在该项目：【${existingName}】${dupMsg}。\n\n如需重新上传，请先废弃原有项目。`,
+        '项目重复',
         {
-          confirmButtonText: '确认作为二次投标',
+          confirmButtonText: '确认为流标重投',
           cancelButtonText: '取消',
           type: 'warning',
           center: true,
         }
       ).then(async () => {
-        // User confirmed — retry with force_retender=true
         isParsing.value = true
         try {
-          const createRes = await apiClient.post<{ id: number }>('/projects', {
-            project_name: '待解析项目',
-            owner_unit: '未知',
-            force_retender: true,
-            parent_id: errDetail?.existing_project_id || undefined,
-          })
-          const retryProjectId = (createRes as unknown as { id: number }).id
+          // Clone via API — creates new project linked to existing one
+          const cloneRes = await apiClient.post(`/projects/${errDetail.existing_project_id}/clone`, {
+            clone_type: 'rebid',
+          }) as { data: { new_project_id: number; new_project_name: string } }
+          const clonedId = (cloneRes as any).data.new_project_id
           const formDataRetry = new FormData()
           formDataRetry.append('file', selectedFile.value!)
-          await apiClient.post(`/projects/${retryProjectId}/upload`, formDataRetry, {
+          await apiClient.post(`/projects/${clonedId}/upload`, formDataRetry, {
             headers: { 'Content-Type': 'multipart/form-data' },
           })
-          ElMessage.success('二次投标项目创建成功！')
-          router.push(`/projects/${retryProjectId}/confirm`)
+          ElMessage.success('已创建流标重投项目')
+          router.push(`/projects/${clonedId}/confirm`)
         } catch (retryErr) {
-          ElMessage.error('二次投标创建失败：' + (retryErr instanceof Error ? retryErr.message : String(retryErr)))
+          ElMessage.error('创建失败：' + (retryErr instanceof Error ? retryErr.message : String(retryErr)))
         } finally {
           isParsing.value = false
         }
       }).catch(() => {
-        // User cancelled — do nothing
+        // User cancelled
       })
     } else {
       ElMessage.error('文件解析失败，请重试')

@@ -22,6 +22,8 @@ AUTO_SYSTEM_PROMPT_TEMPLATE = """你是一位专业的招投标技术标撰写�
 - 突出合规性、规范性、质量保证体系
 - 措辞严谨专业，符合评审专家阅读习惯
 
+{dual_track_context}
+
 输出要求：
 - 语言简洁专业，避免空洞套话
 - 数据指标具体可验证
@@ -37,6 +39,8 @@ GUIDED_SYSTEM_PROMPT_TEMPLATE = """你是一位资深招投标顾问，擅长为
 - 措辞精准有力，说服力强，让评审眼前一亮
 
 {mode_guidance}
+
+{dual_track_context}
 """
 
 GUIDANCE_WITH_NOTES = """【内幕要点】（必须全部采纳进方案）
@@ -61,6 +65,7 @@ USER_PROMPT_TEMPLATE = """## 项目信息
 </reference_documents>
 
 ## 输出要求
+【格式极度严格要求】：你现在只负责撰写【技术方案】的正文！绝对不允许在正文开头生成类似 # 第X章 XXX 的章节标题（系统会自动拼接）。同时，绝对不允许在方案中生成任何关于《营业执照》、《资质证书》等【商务标】文件的占位符，商务标由其他系统独立生成。
 请基于以上参考知识库，为上述章节撰写专业、完整、有竞争力的技术标内容。响应所有评分项，提供具体数据和实施路径。"""
 
 
@@ -77,6 +82,7 @@ class TechProposalPromptBuilder:
         generation_mode: str,
         insider_notes: Optional[str] = None,
         project_type: str = "通用",
+        dual_track_context: str = "",
     ) -> str:
         """
         Build mode-specific system prompt.
@@ -85,6 +91,11 @@ class TechProposalPromptBuilder:
             generation_mode: 'auto' or 'guided'
             insider_notes: Required for GUIDED mode, ignored for AUTO mode
             project_type: Type of project for domain adaptation
+            dual_track_context: w015 — pre-rendered dual-track historical context
+                               (positive win samples + negative loss lessons).
+                               Injected into the prompt so the LLM can learn from
+                               historical bid outcomes before generating content.
+                               Empty string means no historical assets available yet.
 
         Returns:
             System prompt string
@@ -94,8 +105,17 @@ class TechProposalPromptBuilder:
         """
         mode = generation_mode.lower()
 
+        # Format dual_track_context injection slot
+        if dual_track_context:
+            dt_section = f"\n【历史资产参考】\n{dual_track_context}\n"
+        else:
+            dt_section = ""
+
         if mode == "auto":
-            return AUTO_SYSTEM_PROMPT_TEMPLATE.format(project_type=project_type)
+            return AUTO_SYSTEM_PROMPT_TEMPLATE.format(
+                project_type=project_type,
+                dual_track_context=dt_section,
+            )
 
         elif mode == "guided":
             if not insider_notes or not insider_notes.strip():
@@ -104,7 +124,8 @@ class TechProposalPromptBuilder:
             guidance = GUIDANCE_WITH_NOTES.format(insider_notes=insider_notes)
             return GUIDED_SYSTEM_PROMPT_TEMPLATE.format(
                 project_type=project_type,
-                mode_guidance=guidance
+                mode_guidance=guidance,
+                dual_track_context=dt_section,
             )
 
         else:

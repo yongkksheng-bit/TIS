@@ -39,3 +39,40 @@ class ExtractionResponse(BaseModel):
     is_validated: bool
     standard_cert_suggestion: Optional[int]
     standard_cert_id: Optional[int]
+
+
+class TrashProject(BaseModel):
+    """回收站项目响应"""
+    id: int
+    project_name: str
+    project_type: str
+    owner_unit: str
+    region: str
+    budget_amount: float
+    status: str
+    plan_code: Optional[str]
+    agency_project_code: Optional[str]
+    created_at: str
+
+
+class RestoreResponse(BaseModel):
+    """恢复项目响应"""
+    message: str
+    project_id: int
+    project_name: str
+    is_deleted: bool
+
+
+class HardDeleteResponse(BaseModel):
+    """物理删除响应"""
+    project_id: int
+    project_name: str
+    minio_deleted: int
+    vector_deleted: int
+    db_deleted: bool
+
+
+class ClearTrashResponse(BaseModel):
+    """清空回收站响应"""
+    cleared: list[HardDeleteResponse]
+    errors: list[dict]

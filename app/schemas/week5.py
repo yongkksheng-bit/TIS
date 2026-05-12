@@ -77,3 +77,20 @@ class AbandonedDraftResponse(BaseModel):
     can_be_revived: bool
     archived_at: Optional[datetime]
     model_config = ConfigDict(from_attributes=True)
+
+
+# ─── Document Packages (封装清单) ───────────────────────────────────────────────
+
+class DocumentPackage(BaseModel):
+    """Single item in the投标文件封装清单."""
+    id: int
+    type: str           # e.g. '技术标', '商务标'
+    desc: str            # e.g. '技术方案正文（5章节）'
+    ready: bool         # whether this document part is ready
+
+
+class DocumentPackagesResponse(BaseModel):
+    """Response for GET /projects/{project_id}/document-packages."""
+    project_id: int
+    packages: list[DocumentPackage]
+    model_config = ConfigDict(from_attributes=True)

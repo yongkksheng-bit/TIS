@@ -3,28 +3,106 @@ import { ref } from 'vue'
 
 export interface Project {
   id: number
-  project_name: string
-  project_type: string
-  owner_unit: string
+  projectName: string
+  projectType: string
+  ownerUnit: string
   region: string
-  budget_amount: number
+  budgetAmount: number
   status: string
-  relationship_flag: boolean
-  generation_mode: string
-  bid_open_date: string
-  pdf_file?: string
-  boss_insider_notes?: string
-  created_at?: string
-  is_retender?: boolean
-  parent_project_id?: number | null
+  relationshipFlag: boolean
+  generationMode: string
+  bidOpenDate: string
+  pdfFile?: string
+  bossInsiderNotes?: string
+  createdAt?: string
+  isRetender?: boolean
+  parentProjectId?: number | null
+  planCode?: string | null
+  agencyProjectCode?: string | null
+}
+
+export interface TrashProject {
+  id: number
+  projectName: string
+  projectType: string
+  ownerUnit: string
+  region: string
+  budgetAmount: number
+  status: string
+  planCode: string | null
+  agencyProjectCode: string | null
+  createdAt: string
+}
+
+/** Pending clone state — set when user right-clicks "克隆：新一期招标" */
+export interface PendingClone {
+  sourceProjectId: number
+  sourceProjectName: string
+  cloneType: 'rebid' | 'annual_renewal'
 }
 
 export const useProjectStore = defineStore('project', () => {
   const projects = ref<Project[]>([])
+  const trashProjects = ref<TrashProject[]>([])
   const currentProject = ref<Project | null>(null)
+  /** Set when context-menu "新一期招标" is clicked; cleared after clone or cancel */
+  const pendingClone = ref<PendingClone | null>(null)
 
   function setCurrentProject(project: Project) {
     currentProject.value = project
+  }
+
+  function setPendingClone(sourceProjectId: number, sourceProjectName: string, cloneType: 'rebid' | 'annual_renewal') {
+    pendingClone.value = { sourceProjectId, sourceProjectName, cloneType }
+  }
+
+  function clearPendingClone() {
+    pendingClone.value = null
+  }
+
+  async function fetchTrashProjects(): Promise<void> {
+    try {
+      const { apiClient } = await import('@/api/client')
+      const data = await apiClient.get('/projects/trash') as TrashProject[]
+      trashProjects.value = data || []
+    } catch (err) {
+      console.error('fetchTrashProjects failed:', err)
+      trashProjects.value = []
+    }
+  }
+
+  async function restoreProject(projectId: number): Promise<void> {
+    try {
+      const { apiClient } = await import('@/api/client')
+      await apiClient.post(`/projects/${projectId}/restore`)
+      trashProjects.value = trashProjects.value.filter(p => p.id !== projectId)
+    } catch (err) {
+      console.error('restoreProject failed:', err)
+      throw err
+    }
+  }
+
+  async function hardDeleteProject(projectId: number): Promise<void> {
+    try {
+      const { apiClient } = await import('@/api/client')
+      await apiClient.delete(`/projects/${projectId}/hard-delete`)
+      trashProjects.value = trashProjects.value.filter(p => p.id !== projectId)
+    } catch (err) {
+      console.error('hardDeleteProject failed:', err)
+      throw err
+    }
+  }
+
+  async function clearTrash(): Promise<{ cleared: unknown[]; errors: unknown[] }> {
+    try {
+      const { apiClient } = await import('@/api/client')
+      const result = await apiClient.post('/projects/clear-trash') as { cleared: unknown[]; errors: unknown[] }
+      trashProjects.value = []
+      return result
+    } catch (err) {
+      console.error('clearTrash failed:', err)
+      throw err
+    }
   }
 
   async function fetchProjects(role?: string): Promise<void> {
@@ -32,10 +110,14 @@ export const useProjectStore = defineStore('project', () => {
       const { apiClient } = await import('@/api/client')
       const url = role ? `/projects?role=${encodeURIComponent(role)}` : '/projects'
       const data = await apiClient.get(url) as Project[]
-      projects.value = data || []
+      if (Array.isArray(data)) {
+        projects.value = data
+      } else {
+        console.error('fetchProjects: API 异常，收到非数组数据:', data)
+      }
     } catch (err) {
-      console.error('fetchProjects failed:', err)
-      projects.value = []
+      // 不清空原数据！保留缓存防止网络抖动导致白屏
+      console.warn('fetchProjects failed, preserving existing data:', err)
     }
   }
 
@@ -57,5 +139,19 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
-  return { projects, currentProject, setCurrentProject, fetchProjects, fetchProjectById }
+  return {
+    projects,
+    trashProjects,
+    currentProject,
+    pendingClone,
+    setCurrentProject,
+    setPendingClone,
+    clearPendingClone,
+    fetchProjects,
+    fetchProjectById,
+    fetchTrashProjects,
+    restoreProject,
+    hardDeleteProject,
+    clearTrash,
+  }
 })

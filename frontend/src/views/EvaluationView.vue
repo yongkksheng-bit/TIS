@@ -288,8 +288,14 @@ const route = useRoute()
 const projectStore = useProjectStore()
 const authStore = useAuthStore()
 
-const projectId = Number(route.params.id)
-const currentProject = computed(() => projectStore.projects.find(p => p.id === projectId))
+// Computed: reactive, guards against undefined/NaN
+const projectId = computed(() => {
+  const raw = route.params.id
+  if (!raw) return NaN
+  const parsed = Number(raw)
+  return isNaN(parsed) ? NaN : parsed
+})
+const currentProject = computed(() => projectStore.projects.find(p => p.id === projectId.value))
 
 const isGenerating = ref(false)
 const hasReport = ref(false)
@@ -346,9 +352,13 @@ function certStatusLabel(status: string) {
 }
 
 async function generateReport() {
+  if (isNaN(projectId.value)) {
+    ElMessage.error('项目ID获取失败，请刷新页面后重试')
+    return
+  }
   isGenerating.value = true
   try {
-    const result = await apiClient.post(`/v1/projects/${projectId}/evaluations/generate`) as {
+    const result = await apiClient.post(`/v1/projects/${projectId.value}/evaluations/generate`) as {
       code: number
       message: string
       data: {
@@ -418,7 +428,7 @@ async function submitApproval() {
     })
     if (selectedApproval.value === 'worthy') {
       ElMessage.success('审批通过！进入技术标生成流程')
-      router.push(`/projects/${projectId}/tech-proposal`)
+      router.push(`/projects/${projectId.value}/tech-proposal`)
     } else {
       ElMessage.warning('项目已终止')
       router.push('/')
@@ -438,7 +448,7 @@ async function submitToBoss() {
   try {
     // First: update relationship flag if changed
     if (specialistRelationInvolved.value) {
-      await apiClient.put(`/projects/${projectId}/relationship`, {
+      await apiClient.put(`/projects/${projectId.value}/relationship`, {
         relationship_flag: specialistRelationInvolved.value === 'yes',
         differentiation_guidance: specialistRelationInvolved.value === 'yes' ? specialistInsiderNotes.value : undefined,
       })
@@ -472,7 +482,7 @@ async function directExecute() {
       override_reason: specialistNotes.value || undefined,
     })
     ElMessage.success('已直接放行！跳过老板审批，进入技术标生成')
-    router.push(`/projects/${projectId}/tech-proposal`)
+    router.push(`/projects/${projectId.value}/tech-proposal`)
   } catch (err) {
     ElMessage.error('执行失败：' + (err instanceof Error ? err.message : String(err)))
   }

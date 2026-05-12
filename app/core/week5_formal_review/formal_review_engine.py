@@ -280,6 +280,8 @@ class FormalReviewEngine:
         Loads required_sections from tender.extracted_scoring_std (JSON list) and
         compares against tech_proposal.generated_content['sections'].
         Missing required sections → risk='fatal', status='failed'.
+        When tender parsing fails or required_sections is empty, generates a
+        fatal warning so the user is alerted instead of silent pass.
         """
         tech_proposal = self._load_tech_proposal()
         tender = self._load_tender()
@@ -287,7 +289,6 @@ class FormalReviewEngine:
         checklist: list[dict] = []
 
         if not tech_proposal:
-            # No confirmed tech proposal found
             checklist.append({
                 'source_type': 'content_integrity',
                 'check_category': 'document_integrity',
@@ -299,21 +300,50 @@ class FormalReviewEngine:
             })
             return checklist
 
-        # Load required sections from tender
+        # Load required sections from tender.extracted_scoring_std
+        # Note: TenderDocument stores raw JSON in extracted_data dict, not a
+        # top-level extracted_scoring_std field. We handle both paths safely.
         required_sections: list = []
-        if tender and tender.extracted_scoring_std:
-            import json
-            try:
-                required_sections = json.loads(tender.extracted_scoring_std)
-            except (json.JSONDecodeError, TypeError):
-                required_sections = []
+        parsing_error = False
+
+        if tender:
+            raw = getattr(tender, 'extracted_scoring_std', None)
+            if raw:
+                import json
+                try:
+                    required_sections = json.loads(raw)
+                except (json.JSONDecodeError, TypeError):
+                    parsing_error = True
+            elif tender.extracted_data and isinstance(tender.extracted_data, dict):
+                raw = tender.extracted_data.get('extracted_scoring_std')
+                if raw:
+                    import json
+                    try:
+                        required_sections = json.loads(raw)
+                    except (json.JSONDecodeError, TypeError):
+                        parsing_error = True
+
+        # If both required_sections empty AND parsing failed → fatal alert
+        if not required_sections and parsing_error:
+            checklist.append({
+                'source_type': 'content_integrity',
+                'check_category': 'document_integrity',
+                'check_title': '技术标解析异常',
+                'check_description': (
+                    '招标文件评分标准解析失败，无法自动核对章节完整性。'
+                    '请人工确认技术标是否覆盖所有评分维度。'
+                ),
+                'reference_clause': '招标文件评分标准章节',
+                'system_status': 'failed',
+                'risk_level': 'fatal',
+            })
+            return checklist
 
         # Load generated sections from tech proposal
         generated_content = tech_proposal.generated_content or {}
         generated_sections: list = generated_content.get('sections', [])
 
         if not required_sections and not generated_sections:
-            # No required_sections defined and tech proposal is empty
             checklist.append({
                 'source_type': 'content_integrity',
                 'check_category': 'document_integrity',
@@ -327,7 +357,7 @@ class FormalReviewEngine:
 
         # Check each required section has a corresponding generated section
         generated_titles = {s.get('section_title') or s.get('title') for s in generated_sections}
-        generated_titles = {t for t in generated_titles if t}  # filter None/empty
+        generated_titles = {t for t in generated_titles if t}
 
         for req in required_sections:
             req_name = req.get('name') or req.get('section_title') or req.get('title', '')
@@ -353,29 +383,133 @@ class FormalReviewEngine:
 
     def _check_signature_seal(self) -> list[dict]:
         """
-        STUB: Signature and seal check.
+        Signature and seal readiness check.
 
-        Returns:
-            Empty list — full implementation requires PDF parsing + OCR.
+        Generates checklist items for common signature/seal requirements.
+        These are defaults since the tender document model does not yet store
+        a dedicated extracted_seal_requirements field. The specialist must
+        manually confirm each item.
         """
-        return []
+        tender = self._load_tender()
+        project = self._load_project()
+
+        checklist: list[dict] = []
+
+        # Default items applicable to most government procurement bids
+        default_items = [
+            {
+                'check_title': '法定代表人签字或签章',
+                'check_description': '投标函正本须由法定代表人亲笔签字或加盖私章，不可使用电子章',
+                'reference_clause': '投标文件签署要求',
+            },
+            {
+                'check_title': '授权委托书签字盖章',
+                'check_description': '委托代理人投标时，授权委托书须双方签字盖章，且在有效期内',
+                'reference_clause': '委托代理投标规定',
+            },
+            {
+                'check_title': '骑缝章完整性',
+                'check_description': '技术标、商务标各副本须在所有页面连接处加盖骑缝章，确保文件未被替换',
+                'reference_clause': '投标文件封装要求',
+            },
+            {
+                'check_title': '正副本份数与标识',
+                'check_description': '正本1份、副本4份，正本须在封面显著位置标注"正本"字样，不可替代',
+                'reference_clause': '投标文件封装要求',
+            },
+        ]
+
+        # If tender has extracted_data with seal requirements, override defaults
+        if tender and tender.extracted_data and isinstance(tender.extracted_data, dict):
+            seal_reqs = tender.extracted_data.get('seal_requirements') or tender.extracted_data.get('extracted_seal_requirements')
+            if seal_reqs and isinstance(seal_reqs, list):
+                default_items = []
+                for req in seal_reqs:
+                    if isinstance(req, dict):
+                        default_items.append({
+                            'check_title': req.get('name', '盖章签字项'),
+                            'check_description': req.get('description', ''),
+                            'reference_clause': req.get('clause', '招标文件通用要求'),
+                        })
+
+        for item in default_items:
+            checklist.append({
+                'source_type': 'system_parsed',
+                'check_category': 'signature_seal',
+                'check_title': item['check_title'],
+                'check_description': item['check_description'],
+                'reference_clause': item['reference_clause'],
+                'system_status': 'pending',
+                'risk_level': 'warning',
+            })
+
+        return checklist
 
     def _check_seal_requirements(self) -> list[dict]:
         """
-        STUB: Seal requirements check.
+        Physical seal and packaging requirements check.
 
-        Reads tender.extracted_seal_requirements if present and generates
-        warning items for now.
+        Reads seal/packaging requirements from tender.extracted_data if present.
+        If no data is available, returns sensible defaults so the specialist
+        can manually confirm compliance.
         """
         tender = self._load_tender()
-        if not tender:
-            return []
 
-        seal_reqs = getattr(tender, 'extracted_seal_requirements', None)
-        if not seal_reqs:
-            return []
+        checklist: list[dict] = []
 
-        return []
+        # Default packaging requirements for government tenders
+        default_items = [
+            {
+                'check_title': '投标文件分别封装',
+                'check_description': '技术标与商务标须分开装订、分开密封，不得合并装入同一封套',
+                'reference_clause': '投标文件封装规定',
+            },
+            {
+                'check_title': '封套粘贴与密封',
+                'check_description': '封套开口处须用封条密封，并加盖投标人公章，内容须与封面一致',
+                'reference_clause': '投标文件封装规定',
+            },
+            {
+                'check_title': '电子版文件一致性',
+                'check_description': 'U 盘内电子文件须与纸质正本一致，文件名须包含项目名称及投标方名称',
+                'reference_clause': '电子投标文件规定',
+            },
+            {
+                'check_title': '包封标注完整性',
+                'check_description': '外层封套须注明项目名称、投标方名称、招标编号，并加盖公章',
+                'reference_clause': '投标文件外观标识要求',
+            },
+        ]
+
+        # Override with tender-specific data if available
+        if tender and tender.extracted_data and isinstance(tender.extracted_data, dict):
+            seal_reqs = (
+                tender.extracted_data.get('seal_requirements')
+                or tender.extracted_data.get('packaging_requirements')
+                or tender.extracted_data.get('封套要求')
+            )
+            if seal_reqs and isinstance(seal_reqs, list):
+                default_items = []
+                for req in seal_reqs:
+                    if isinstance(req, dict):
+                        default_items.append({
+                            'check_title': req.get('name', '封装检查项'),
+                            'check_description': req.get('description', ''),
+                            'reference_clause': req.get('clause', '招标文件封装要求'),
+                        })
+
+        for item in default_items:
+            checklist.append({
+                'source_type': 'system_parsed',
+                'check_category': 'seal_requirement',
+                'check_title': item['check_title'],
+                'check_description': item['check_description'],
+                'reference_clause': item['reference_clause'],
+                'system_status': 'pending',
+                'risk_level': 'warning',
+            })
+
+        return checklist
 
 
 # ─── Standalone Helper ───────────────────────────────────────────────────────

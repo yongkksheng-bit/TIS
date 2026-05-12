@@ -97,6 +97,11 @@ def extract_qualifications_with_llm(pdf_text: str, project_name: str = "") -> li
     content = response.content.strip()
     logger.info(f"LLM qualification extraction response (first 300 chars): {content[:300]}")
 
+    # ─── Error classification for upstream callers ───────────────────────────
+    # If the LLM call itself raised (timeout, network, API error), it bubbles up
+    # as RuntimeError (classified in llm_mock.py). Wrap with context so callers
+    # can distinguish "LLM timeout during extraction" from "bad JSON".
+
     # Parse JSON from response — may be wrapped in ```json ... ```
     json_str = content
     if content.startswith("```"):

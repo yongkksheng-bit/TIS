@@ -128,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useProjectStore, type Project } from '@/stores/projectStore'
 import { apiClient } from '@/api/client'
@@ -139,23 +139,28 @@ const router = useRouter()
 const route = useRoute()
 const projectStore = useProjectStore()
 
-const projectId = Number(route.params.id)
+const projectId = computed(() => {
+  const raw = route.params.id
+  if (!raw) return NaN
+  const parsed = Number(raw)
+  return isNaN(parsed) ? NaN : parsed
+})
 const isConfirming = ref(false)
 const isLoadingOcr = ref(false)
 const pdfUrl = ref('')
 
 const project = reactive<Project>({
-  id: projectId,
-  project_name: '',
-  project_type: 'service',
-  owner_unit: '',
+  id: projectId.value as number,
+  projectName: '',
+  projectType: 'service',
+  ownerUnit: '',
   region: '',
-  budget_amount: 0,
+  budgetAmount: 0,
   status: 'parsing',
-  relationship_flag: false,
-  generation_mode: 'auto',
-  bid_open_date: '',
-  pdf_file: '',
+  relationshipFlag: false,
+  generationMode: 'auto',
+  bidOpenDate: '',
+  pdfFile: '',
 })
 
 const formData = ref({
@@ -193,9 +198,13 @@ function extractFieldValue(fields: Array<{ fieldName: string; fieldValue: string
 }
 
 onMounted(async () => {
+  if (isNaN(projectId.value)) {
+    ElMessage.error('项目ID获取失败，请刷新页面后重试')
+    return
+  }
   isLoadingOcr.value = true
   try {
-    const data = await apiClient.get(`/projects/${projectId}/confirmation-data`) as {
+    const data = await apiClient.get(`/projects/${projectId.value}/confirmation-data`) as {
       images: Array<{
         id: number
         fields: Array<{ fieldName: string; fieldValue: string; normalizedValue?: string }>
@@ -237,7 +246,7 @@ async function confirmAndProceed() {
   }
   isConfirming.value = true
   try {
-    await apiClient.post(`/projects/${projectId}/confirm-parsing`, {
+    await apiClient.post(`/projects/${projectId.value}/confirm-parsing`, {
       confirmations: [],
       project_name: formData.value.project_name,
       owner_unit: formData.value.owner_unit,
@@ -249,7 +258,7 @@ async function confirmAndProceed() {
       agency_project_code: formData.value.agency_project_code || undefined,
     })
     ElMessage.success('项目立项成功！')
-    router.push(`/projects/${projectId}/evaluation`)
+    router.push(`/projects/${projectId.value}/evaluation`)
   } catch (err) {
     ElMessage.error('确认失败：' + (err instanceof Error ? err.message : String(err)))
   } finally {
@@ -258,7 +267,7 @@ async function confirmAndProceed() {
 }
 
 function goBack() {
-  router.push(`/projects/${projectId}/upload`)
+  router.push(`/projects/${projectId.value}/upload`)
 }
 </script>
 

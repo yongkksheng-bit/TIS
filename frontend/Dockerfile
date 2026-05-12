@@ -16,7 +16,7 @@ COPY . .
 
 # Build arguments for API configuration
 ARG VITE_USE_MOCK=false
-ARG VITE_API_BASE_URL=/api
+ARG VITE_API_BASE_URL=""
 
 # Set environment for build
 ENV VITE_USE_MOCK=$VITE_USE_MOCK

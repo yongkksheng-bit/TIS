@@ -24,6 +24,10 @@ const router = createRouter({
       component: () => import('@/views/TechProposalView.vue'),
     },
     {
+      path: '/projects/:id/business-proposal',
+      component: () => import('@/views/BusinessProposalView.vue'),
+    },
+    {
       path: '/projects/:id/pricing',
       component: () => import('@/views/PricingView.vue'),
     },
@@ -38,6 +42,10 @@ const router = createRouter({
     {
       path: '/projects/:id/review',
       component: () => import('@/views/ReviewView.vue'),
+    },
+    {
+      path: '/trash',
+      component: () => import('@/views/TrashView.vue'),
     },
   ],
 })

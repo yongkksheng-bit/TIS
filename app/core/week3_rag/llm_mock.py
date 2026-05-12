@@ -101,15 +101,20 @@ class RealDeepSeekLLM:
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with urllib.request.urlopen(req, timeout=120) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             error_body = e.read().decode("utf-8") if e.fp else ""
-            raise RuntimeError(
-                f"DeepSeek API error {e.code}: {error_body}"
-            ) from e
+            if e.code == 401:
+                raise RuntimeError("DeepSeek API 认证失败：API Key 无效或已过期") from e
+            elif e.code == 429:
+                raise RuntimeError("DeepSeek API 请求超出限速（429），请稍后重试") from e
+            elif e.code == 500:
+                raise RuntimeError("DeepSeek 服务器内部错误（500），请稍后重试") from e
+            else:
+                raise RuntimeError(f"DeepSeek API 错误 {e.code}: {error_body}") from e
         except urllib.error.URLError as e:
-            raise RuntimeError(f"Network error calling DeepSeek API: {e.reason}") from e
+            raise RuntimeError(f"网络连接 DeepSeek API 失败，请检查网络：{e.reason}") from e
 
         # Extract response
         choices = result.get("choices", [])

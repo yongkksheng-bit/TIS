@@ -2,11 +2,11 @@ import axios from 'axios'
 import { mockClient } from './mock'
 
 const useMock = import.meta.env.VITE_USE_MOCK === 'true'
-const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+const baseURL = (import.meta.env.VITE_API_BASE_URL === undefined ? '' : import.meta.env.VITE_API_BASE_URL)
 
 export const apiClient = axios.create({
   baseURL,
-  timeout: 120000, // 120s — accommodates large PDF chunking + GPU embedding on RTX 3060
+  timeout: 300000, // 300s — accommodates long-text chapter generation (应急预案/项目团队) — accommodates large PDF chunking + GPU embedding on RTX 3060
 })
 
 // Add request interceptor to convert camelCase -> snake_case

@@ -6,11 +6,11 @@
         <h2 class="text-xl font-semibold">技术标编辑台</h2>
         <StatusBadge :status="currentProject?.status || ''" />
       </div>
-      <div v-if="currentProject?.boss_insider_notes" class="boss-notes-alert mt-2">
+      <div v-if="currentProject?.bossInsiderNotes" class="boss-notes-alert mt-2">
         <el-alert type="warning" :closable="false">
           <template #title>
             <span class="text-sm">老板指导：</span>
-            <span class="text-sm text-orange-600">{{ currentProject.boss_insider_notes }}</span>
+            <span class="text-sm text-orange-600">{{ currentProject.bossInsiderNotes }}</span>
           </template>
         </el-alert>
       </div>
@@ -117,44 +117,59 @@ const router = useRouter()
 const route = useRoute()
 const projectStore = useProjectStore()
 
-const projectId = Number(route.params.id)
-const currentProject = computed(() => projectStore.projects.find(p => p.id === projectId))
+// Computed so it stays reactive if route changes; guards against undefined/NaN
+const projectId = computed(() => {
+  const raw = route.params.id
+  if (!raw) return NaN
+  const parsed = Number(raw)
+  return isNaN(parsed) ? NaN : parsed
+})
+const currentProject = computed(() => projectStore.projects.find(p => p.id === projectId.value))
 
 const generationMode = ref<'auto' | 'guided'>('auto')
 const isGenerating = ref(false)
 const selectedSectionId = ref<number | null>(null)
 
-const isModeLocked = computed(() => !!currentProject.value?.boss_insider_notes)
+const isModeLocked = computed(() => !!currentProject.value?.bossInsiderNotes)
 
 const sections = ref([
-  { id: 1, title: '项目理解', scoring_item: '2.1 项目背景', content: '', generated: false, children: [] },
-  { id: 2, title: '服务方案', scoring_item: '2.2 服务内容', content: '', generated: false, children: [] },
-  { id: 3, title: '质量管理', scoring_item: '2.3 质量保障', content: '', generated: false, children: [] },
-  { id: 4, title: '应急预案', scoring_item: '2.4 风险管控', content: '', generated: false, children: [] },
-  { id: 5, title: '项目团队', scoring_item: '2.5 人员配置', content: '', generated: false, children: [] },
+  { id: 1, title: '第一章 项目理解', scoring_item: '2.1 项目背景', content: '', generated: false, children: [] },
+  { id: 2, title: '第二章 服务方案', scoring_item: '2.2 服务内容', content: '', generated: false, children: [] },
+  { id: 3, title: '第三章 质量管理', scoring_item: '2.3 质量保障', content: '', generated: false, children: [] },
+  { id: 4, title: '第四章 应急预案', scoring_item: '2.4 风险管控', content: '', generated: false, children: [] },
+  { id: 5, title: '第五章 项目团队', scoring_item: '2.5 人员配置', content: '', generated: false, children: [] },
 ])
 
 const selectedSection = computed(() => sections.value.find(s => s.id === selectedSectionId.value))
 const canGenerate = computed(() => selectedSectionId.value !== null && !isGenerating.value)
 
 onMounted(async () => {
+  if (isNaN(projectId.value)) {
+    ElMessage.error('项目ID获取失败，请刷新页面后重试')
+    return
+  }
   // Refresh project status from backend (in case changed via API approval)
-  await projectStore.fetchProjectById(projectId)
+  await projectStore.fetchProjectById(projectId.value)
 
   // Set generation mode from project
-  if (currentProject.value?.generation_mode === 'guided') {
+  if (currentProject.value?.generationMode === 'guided') {
     generationMode.value = 'guided'
   }
   // Load existing generated sections from backend
   try {
-    const data = await apiClient.get(`/v1/projects/${projectId}/sections`) as {
+    const resp = await apiClient.get(`/v1/projects/${projectId.value}/sections`) as {
       data: {
-        sections: Array<{ section_name: string; content: string; mode: string; generation_timestamp: string }>
+        sections: Array<{ sectionName: string; content: string; mode: string; generationTimestamp: string }>
       }
     }
-    if (data.data?.sections) {
-      for (const sec of data.data.sections) {
-        const section = sections.value.find(s => s.title === sec.section_name)
+    if (resp.data?.sections) {
+      for (const sec of resp.data.sections) {
+        // 兼容旧数据（无章节前缀如"项目理解"）和新数据（有前缀如"第一章 项目理解"）
+        const section = sections.value.find(s =>
+          s.title === sec.sectionName ||
+          s.title.endsWith(sec.sectionName) ||
+          sec.sectionName.endsWith(s.title.split(' ')[1] || s.title)
+        )
         if (section) {
           section.content = sec.content
           section.generated = true
@@ -171,18 +186,35 @@ function handleSectionClick(data: typeof sections.value[0]) {
 }
 
 async function generateSection() {
+  if (isNaN(projectId.value)) {
+    ElMessage.error('项目ID获取失败，请刷新页面后重试')
+    return
+  }
   if (!selectedSection.value) return
   isGenerating.value = true
   try {
-    const insiderNotes = generationMode.value === 'guided' ? (currentProject.value?.boss_insider_notes || '') : undefined
-    const result = await apiClient.post(`/v1/projects/${projectId}/generate-section`, {
+    const insiderNotes = generationMode.value === 'guided' ? (currentProject.value?.bossInsiderNotes || '') : undefined
+    // rag.py returns ResponseWrapper(data=GeneratedSectionResponse), interceptor strips Axios HTTP
+    // wrapper but NOT the application-level ResponseWrapper, so result = {code:200, data:{content:"..."}}
+    const result = await apiClient.post(`/v1/projects/${projectId.value}/generate-section`, {
       section_name: selectedSection.value.title,
       generation_mode: generationMode.value,
       insider_notes: insiderNotes,
       top_k: generationMode.value === 'auto' ? 5 : 3,
-    }) as { data: { content: string; generation_timestamp: string } }
+    }) as { data: { content: string; generationTimestamp: string } }
     selectedSection.value.content = result.data.content
     selectedSection.value.generated = true
+    // Upsert to ProjectSection (authoritative DB storage — non-blocking)
+    try {
+      await apiClient.put(`/v1/projects/${projectId.value}/sections/${encodeURIComponent(selectedSection.value.title)}`, {
+        section_name: selectedSection.value.title,
+        content: result.data.content,
+        mode: generationMode.value,
+      })
+    } catch (upsertErr) {
+      console.warn('Section auto-save failed (content is in memory):', upsertErr)
+      ElMessage.warning('内容已生成但自动保存失败，请手动重新生成以保存')
+    }
     ElMessage.success(`${selectedSection.value.title} 生成完成`)
   } catch (err) {
     ElMessage.error('生成失败：' + (err instanceof Error ? err.message : String(err)))
@@ -196,22 +228,30 @@ async function regenerateSection() {
   await generateSection()
 }
 
-function confirmAllSections() {
+async function confirmAllSections() {
+  if (isNaN(projectId.value)) {
+    ElMessage.error('项目ID获取失败，请刷新页面后重试')
+    return
+  }
   const allGenerated = sections.value.every(s => s.generated)
   if (!allGenerated) {
     ElMessage.warning('请先生成所有章节')
     return
   }
-  const project = projectStore.projects.find(p => p.id === projectId)
-  if (project) {
-    project.status = 'awaiting_pricing'
-    ElMessage.success('技术标已确认！进入定价流程')
+  try {
+    await apiClient.post(`/v1/projects/${projectId.value}/advance-to-pricing`)
+    ElMessage.success('技术标已确认！进入定价阶段')
+    await projectStore.fetchProjects()
+    router.push(`/projects/${projectId.value}/pricing`)
+  } catch (err: unknown) {
+    const errObj = err as { response?: { data?: { detail?: string } } }
+    const detail = errObj?.response?.data?.detail
+    ElMessage.error(detail || '推进定价流程失败，请重试')
   }
-  router.push(`/projects/${projectId}/pricing`)
 }
 
 function goBack() {
-  router.push(`/projects/${projectId}/evaluation`)
+  router.push(`/projects/${projectId.value}/evaluation`)
 }
 </script>
 
