@@ -41,6 +41,7 @@ class BidReviewEngine:
         competitor_price: Optional[float],
         feedback: str,
         outcome_status: str,
+        disqualification_type: Optional[str] = None,
     ) -> dict:
         """
         Log a bid outcome and update knowledge base.
@@ -50,6 +51,7 @@ class BidReviewEngine:
             competitor_price: Winning competitor's price (if known)
             feedback: Human-readable feedback or disqualification reason
             outcome_status: 'win', 'lose', or 'disqualified'
+            disqualification_type: Type of disqualification (for disqualified outcomes)
 
         Returns:
             dict with outcome details
@@ -85,7 +87,7 @@ class BidReviewEngine:
         if outcome_status == "win" or is_win:
             return self._handle_win(competitor_price, feedback)
         elif outcome_status == "disqualified":
-            return self._handle_disqualified(competitor_price, feedback)
+            return self._handle_disqualified(competitor_price, feedback, disqualification_type)
         elif outcome_status == "lose":
             return self._handle_lose(competitor_price, feedback)
         else:
@@ -242,8 +244,11 @@ class BidReviewEngine:
             "price_history_id": price_history_id,
         }
 
-    def _handle_disqualified(self, competitor_price: Optional[float], feedback: str) -> dict:
+    def _handle_disqualified(self, competitor_price: Optional[float], feedback: str, disqualification_type: Optional[str] = None) -> dict:
         """Handle disqualification outcome."""
+        # Use provided disqualification_type or default to "fatal_formal"
+        final_disq_type = disqualification_type or "fatal_formal"
+
         # Step 1: Create BidOutcome with is_manual_error=False initially
         bid_outcome = BidOutcome(
             project_id=self.project_id,
@@ -251,7 +256,7 @@ class BidReviewEngine:
             outcome_date=date.today(),
             final_bid_price=float(self._pricing_decision.boss_final_price) if self._pricing_decision else 0.0,
             disqualification_reason=feedback,
-            disqualification_type="fatal_formal",  # default type
+            disqualification_type=final_disq_type,
             is_manual_error=False,
             reviewed_at=datetime.now(timezone.utc),
         )

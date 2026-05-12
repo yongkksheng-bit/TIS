@@ -64,6 +64,7 @@ def record_outcome(
         competitor_price=data.winning_price,
         feedback=feedback,
         outcome_status=data.outcome_status,
+        disqualification_type=data.disqualification_type,
     )
 
     # Fetch the created bid_outcome record
