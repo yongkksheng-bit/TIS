@@ -107,3 +107,27 @@ class SectionUpsertResponse(BaseModel):
     content: str
     upserted: bool  # True=insert, False=update
     saved_at: str
+
+
+# ─── TechProposalTask Schemas ─────────────────────────────────────────────────
+
+class TechProposalTaskResponse(BaseModel):
+    """Response for a TechProposalTask."""
+    id: int
+    project_id: int
+    generation_mode: str
+    input_config: dict[str, Any]
+    generated_content: Optional[dict[str, Any]] = None
+    final_content: Optional[str] = None
+    editor_version: int
+    status: str
+    created_by: Optional[int] = None
+    confirmed_at: Optional[str] = None
+    confirmed_by: Optional[int] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class TechProposalTaskStatusUpdateRequest(BaseModel):
+    """Request to update TechProposalTask status."""
+    status: str = Field(..., pattern="^(generating|generated|confirmed|rejected)$")

@@ -15,6 +15,8 @@ from app.schemas.week3 import (
     SectionData,
     SectionUpsertRequest,
     SectionUpsertResponse,
+    TechProposalTaskResponse,
+    TechProposalTaskStatusUpdateRequest,
 )
 from app.schemas.common import ResponseWrapper
 from app.core.week3_rag.text_chunker import DocumentChunker
@@ -286,4 +288,87 @@ def upsert_section(
         content=data.content,
         upserted=upserted,
         saved_at=existing.updated_at.isoformat() if existing.updated_at else now.isoformat(),
+    ).model_dump())
+
+
+# ─── GET /api/v1/projects/{project_id}/tech-proposal/current ─────────────────
+
+@router.get("/{project_id}/tech-proposal/current")
+def get_current_tech_proposal(project_id: int, db: Session = Depends(get_db)):
+    """
+    Get the most recent TechProposalTask for a project.
+
+    Returns the newest TechProposalTask ordered by id DESC, or 404 if none exists.
+    """
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    task = (
+        db.query(TechProposalTask)
+        .filter(TechProposalTask.project_id == project_id)
+        .order_by(TechProposalTask.id.desc())
+        .first()
+    )
+
+    if not task:
+        raise HTTPException(status_code=404, detail=f"No TechProposalTask found for project {project_id}")
+
+    return ResponseWrapper(data=TechProposalTaskResponse(
+        id=task.id,
+        project_id=task.project_id,
+        generation_mode=task.generation_mode,
+        input_config=task.input_config or {},
+        generated_content=task.generated_content,
+        final_content=task.final_content,
+        editor_version=task.editor_version,
+        status=task.status,
+        created_by=task.created_by,
+        confirmed_at=task.confirmed_at.isoformat() if task.confirmed_at else None,
+        confirmed_by=task.confirmed_by,
+        created_at=task.created_at.isoformat() if task.created_at else None,
+        updated_at=task.updated_at.isoformat() if task.updated_at else None,
+    ).model_dump())
+
+
+# ─── PUT /api/v1/tech-proposal-tasks/{id}/status ─────────────────────────────
+
+@router.put("/tech-proposal-tasks/{task_id}/status")
+def update_tech_proposal_status(
+    task_id: int,
+    data: TechProposalTaskStatusUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Update the status of a TechProposalTask.
+
+    Valid statuses: 'generating', 'generated', 'confirmed', 'rejected'
+    When status is set to 'confirmed', confirmed_at is also set to current time.
+    """
+    task = db.get(TechProposalTask, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"TechProposalTask {task_id} not found")
+
+    task.status = data.status
+
+    if data.status == "confirmed":
+        task.confirmed_at = datetime.now()
+
+    db.commit()
+    db.refresh(task)
+
+    return ResponseWrapper(data=TechProposalTaskResponse(
+        id=task.id,
+        project_id=task.project_id,
+        generation_mode=task.generation_mode,
+        input_config=task.input_config or {},
+        generated_content=task.generated_content,
+        final_content=task.final_content,
+        editor_version=task.editor_version,
+        status=task.status,
+        created_by=task.created_by,
+        confirmed_at=task.confirmed_at.isoformat() if task.confirmed_at else None,
+        confirmed_by=task.confirmed_by,
+        created_at=task.created_at.isoformat() if task.created_at else None,
+        updated_at=task.updated_at.isoformat() if task.updated_at else None,
     ).model_dump())
