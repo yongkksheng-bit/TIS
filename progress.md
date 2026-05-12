@@ -1,0 +1,270 @@
+# TIS 项目评估进度日志
+
+## Session: 2026-05-01 修复执行
+
+### 开始时间
+2026-05-01
+
+### 任务
+1. 调查 historical_bids=0 的根因
+2. 修复 outcome_book.csv（添加 historical_tender_id 列）
+3. 验证 RAG 双轨功能
+
+### 完成状态
+✅ 选项A: outcome_book.csv 修复完成
+✅ 选项C: RAG 双轨验证通过
+⏸️ 选项B: 延后处理弃用 chunks
+
+---
+
+## Session: 2026-04-28 系统评估
+
+### 开始时间
+2026-04-28
+
+### 评估状态
+✅ 全部完成（Phase 1-4 + P0数据修复 + 架构修复）
+
+### P0修复记录（2026-04-28）
+- [x] win_signal 批量修复：UPDATE 13726 rows → positive=6140, negative=7585, neutral=1
+- [x] retrieve_positive_samples() 返回5条 ✅
+- [x] retrieve_negative_samples() 返回5条 ✅
+
+### 架构修复记录（2026-04-28）
+- [x] 根本性修复outcome_book匹配问题
+  - `outcome_book.py`: 新增 `get_by_project_name()` + `_strip_doc_suffix()` + `_rows_by_project` 索引
+  - `run_import.py`: 在 `step_load_bid_and_chunks` 中新增 level-3/4 fallback（project_name匹配 + 模糊匹配）
+  - 修复: CSV skip逻辑, "failed"映射, header trailing space
+- [x] test_outcome_book.py 新增: 7个测试用例全部通过 ✅
+
+### 进度记录
+
+#### 2026-04-28 12:xx
+- [x] 初始化 planning-with-files 三文件
+- [x] Phase 1: 环境探索（完成）
+  - 项目结构：FastAPI分层 + DDD架构，8个API端点，31张DB表
+  - Git历史：78dfe51~c726e9e，30条commits，master分支
+  - 配置文件：docker-compose, .env.example, requirements.txt
+  - 数据库：31张表全部存在，pgvector配置正常
+- [x] Phase 2: 核心代码分析（完成）
+  - API端点：projects, documents, evaluations, rag, pricing, formal_review
+  - RAG模块：双轨RAG(retriever 421行, generator 316行) + V3 chunker(697行)
+  - 定价引擎：game_theory(298行) + price_benchmark(246行)
+  - 正式评审：formal_review_engine(564行)
+- [x] Phase 3: 代码质量评估（完成）
+  - 大文件：Top5 (908行/810行/718行/692行/564行)
+  - 技术债务：P0无紧急项，P1有3项，P2有2项，P3有2项
+  - 测试覆盖：60+文件，Week1-6+unit全覆盖
+- [x] Phase 4: 综合评估（完成）
+  - 风险识别：P1(3项) + P2(2项) + P3(2项)
+  - 优化建议：P1字段填充+RAG E2E验证+历史数据注入
+  - 下一步计划：P0(3项立即行动) + P1(3项本周) + P2(3项计划)
+
+#### 重要发现
+1. **w013-w018 迁移文件状态澄清**：所有6个文件已TRACKED（commit 6be65bc），非"untracked"
+2. **live_fire_e2e.py 状态澄清**：579行文件存在且TRACKED，AI_MEMORY误记为"已删除"
+3. **w015 metadata字段空白**：RAG系统12个新字段未填充
+4. **大文件技术债**：5个400+行文件（historical_chunker 908行最高）
+5. **win_signal双轨RAG失效**：13,726条chunks 100%='neutral' → 已通过SQL修复
+6. **outcome_book.csv根本性缺陷**：tender/bid文件SHA256不匹配 → 已通过架构修复
+
+#### 错误记录
+| 错误 | 尝试 | 解决 |
+|------|------|------|
+| AI_MEMORY.md 误记 w013-w018 为 untracked | 核对 git ls-files | 确认全部已tracked（commit 6be65bc）|
+| AI_MEMORY.md 误记 live_fire_e2e.py 为已删除 | 核对 git ls-files + wc -l | 文件存在（579行），确认 TRACKED |
+| AI_MEMORY.md 误记 7,070 条 chunks | 直接查询 DB COUNT(*) | 实际 13,726 条 |
+| AI_MEMORY.md 误记 w015 字段未填充 | 查询 DB column stats | source_type/id/win_signal/token_count 100%已填充 |
+| outcome_book.csv tender/bid hash不匹配 | SQL UPDATE修复 | win_signal已正确分布 |
+| outcome_book.csv架构缺陷 | 代码重构 | get_by_project_name() 新增 |
+
+---
+
+## Session: 2026-05-02 系统全面审查
+
+### 开始时间
+2026-05-02
+
+### 审查发现
+
+#### CRITICAL: projects表=0
+- RAG知识库：13,726 chunks ✅
+- 历史标书：14条 ✅
+- 历史投标：14条 ✅
+- **实际项目：0条** ⚠️
+
+#### 系统状态
+| 模块 | 状态 |
+|------|------|
+| chunks表 | ✅ 13,726条 |
+| scoring_dimension_tags | ✅ 100%填充 |
+| win_signal | ✅ positive:3153, negative:3917 |
+| historical_bids | ✅ 14条 |
+| RAG双轨 | ✅ 工作正常 |
+| **projects表** | ⚠️ **0条** |
+
+### 待处理
+
+| 优先级 | 任务 | 状态 |
+|--------|------|------|
+| **P0** | ~~创建测试项目解锁流程~~ | ✅ 已完成 |
+| **P1** | ~~端到端流程测试~~ | ✅ Week 1-2 通过 |
+| **P2** | 选项B延后处理 | ⏸️ 延后 |
+
+---
+
+## Session: 2026-05-11 Week 1-2 E2E 测试
+
+### 开始时间
+2026-05-11
+
+### 任务
+使用 Subagent-Driven Development 执行 Week 1-2 E2E 测试
+
+### 完成状态
+✅ Task 1: 创建测试项目 - Project 117 created
+✅ Task 2: 上传招标文件 - tender_documents 1 row
+✅ Task 3: 触发初筛评估 - report_id=99 generated
+✅ Task 4: 验收确认 - 全部criteria通过
+
+### 执行方式
+- Subagent-Driven Development（每个Task一个subagent）
+- Task 1: Docker验证 → 项目创建 → DB验证
+- Task 2: 文件上传 → DB验证
+- Task 3: 触发评估 → DB验证
+- Task 4: 三表计数验证
+
+### 测试数据
+- 项目：HZ_2025_Canteen_Test (id=117)
+- 招标文件：2025_惠州交通大厦食堂管理和食材配送服务_招标文件.docx
+- 评估结果：recommendation="abandon", risk_level="high"（新项目无资质数据，符合预期）
+
+### 模型修复记录
+- 文件：`app/models/historical.py`
+- 问题：双向FK冲突 `AmbiguousForeignKeysError`
+- 修复：移除 `HistoricalBid.postmortem` 和 `InternalPostmortem.bid` 的 `back_populates`
+- 决策：**正式提交**（必要修复）
+
+---
+
+## Session: 2026-05-11/12 Week 3 RAG 生成测试
+
+### 开始时间
+2026-05-11 ~ 2026-05-12
+
+### 任务
+使用 Subagent-Driven Development 执行 Week 3 RAG 生成测试
+
+### 完成状态
+✅ Task 1: 生成第一章（冷链配送方案） - 2579 chars
+✅ Task 2: 生成第二章（食材溯源方案） - 5836 chars
+✅ Task 3: 生成第三章（服务保障方案） - 7261 chars
+✅ Task 4: 保存章节到数据库 - 3 rows in project_sections
+✅ Task 5: 验收确认 - GET /sections 返回 3 条
+
+### 测试数据
+- 项目：HZ_2025_Canteen_Test (id=117)
+- 3 个章节已生成并保存到 project_sections 表
+
+### 执行方式
+- Subagent-Driven Development（每个Task一个subagent）
+- Task 1-3: 调用 POST /generate-section 生成章节
+- Task 4: 调用 PUT /sections/{name} 保存章节（发现问题：需单独保存）
+- Task 5: 验证 GET /sections 和 DB 查询
+
+### 关键发现
+
+1. **POST /generate-section 不自动保存**：前端负责调用 PUT 保存
+2. **source_chunk_count = 0**：Project 117 自身文档未建立 RAG 索引
+3. **双轨 RAG 正常**：`use_dual_track_rag=true` 工作正常
+
+---
+
+## Session: 2026-05-12 Week 4 定价博弈测试
+
+### 开始时间
+2026-05-12
+
+### 任务
+使用 Subagent-Driven Development 执行 Week 4 定价博弈测试
+
+### 完成状态
+✅ Task 1: 设置项目预算 - budget_amount=9,000,000
+✅ Task 2: 创建成本估算 - cost_estimate id=49, total_cost=9,000,000
+✅ Task 3: 确认成本估算 - is_confirmed=true
+✅ Task 4: 生成 A/B/C 定价方案 - 3 scenarios
+✅ Task 5: 提交定价决策 - pricing_decision id=16, boss_final_price=9,200,000
+✅ Task 6: 验收确认 - 数据库验证通过
+
+### 执行方式
+- Subagent-Driven Development（每个Task一个subagent）
+- Task 1: SQL UPDATE 设置预算
+- Task 2: POST /cost-estimates 创建估算
+- Task 3: POST /cost-estimates/{id}/confirm 确认
+- Task 4: POST /pricing-calculations 生成方案
+- Task 5: POST /pricing-decisions 提交决策（使用 price=9,200,000 避免 loss pricing）
+- Task 6: 数据库计数验证
+
+### 测试数据
+- 项目：HZ_2025_Canteen_Test (id=117)
+- 预算：9,000,000
+- 成本：food_cost=6,300,000, logistics_cost=1,350,000, labor_cost=900,000, management_cost=450,000
+- 定价决策：boss_final_price=9,200,000, status='decided'
+
+### 关键发现
+
+1. **Loss Pricing Intercept**: POST /pricing-decisions 使用 price=8,800,000 被拒绝（低于成本 9,000,000）
+2. **中文编码问题**: curl JSON 中文 payload 解析错误，使用文件重定向解决
+3. **博弈模型正常**: A/B/C 三方案正确生成，recommended 方案被标记
+
+---
+
+## Session: 2026-05-12 Week 5 形式审查测试
+
+### 开始时间
+2026-05-12
+
+### 任务
+使用 Subagent-Driven Development 执行 Week 5 形式审查测试
+
+### 完成状态
+⚠️ Task 1: 查询 TechProposalTask - endpoint 返回 404，跳过
+⚠️ Task 2: 确认 TechProposalTask - 同上，跳过
+✅ Task 3: 发起形式审查 - 10 items, fatal_count=1
+✅ Task 4: 查看评审状态 - fatal_pending=1
+✅ Task 5: 确认 fatal 评审项 - confirmed
+✅ Task 6: 生成最终标书 - Word doc created
+✅ Task 7: 验收确认 - formal_review_items=10, final_bid_documents=1
+
+### 执行方式
+- Subagent-Driven Development（每个Task一个subagent）
+- Task 1-2: 尝试查询/确认 TechProposalTask，发现 endpoint 不存在
+- Task 3: POST /formal-review/initiate 生成评审清单
+- Task 4: GET /formal-review/status 查看状态
+- Task 5: POST /formal-review-items/{id}/confirm 确认 fatal 项
+- Task 6: POST /final-documents/generate 生成 Word 文档
+- Task 7: 数据库计数验证
+
+### 测试数据
+- 项目：HZ_2025_Canteen_Test (id=117)
+- 形式审查：10 checklist items
+- Fatal 项：1个 (check_item_id=1)
+- 最终标书：/tmp/final_bid_117_20260512062831.docx
+
+### Bug 修复记录
+
+#### Bug 1: formal_review_items.system_status CHECK constraint
+- 问题：'pending' not in allowed values
+- 修复：ALTER TABLE 添加 'pending' 到 CHECK 约束
+
+#### Bug 2: document_type 'final_bid' CHECK constraint
+- 问题：'final_bid' not in allowed values (allowed: 'complete', 'draft', 'submitted')
+- 修复：将 formal_review.py 中的 document_type='final_bid' 改为 'complete'
+
+### 关键发现
+
+1. **TechProposalTask endpoint 不存在**: GET /api/v1/projects/117/tech-proposal/current 返回 404
+2. **Project 117 无 TechProposalTask 记录**: 无法确认 tech proposal
+3. **形式审查可独立进行**: 即使无 tech proposal 确认，formal_review 可正常发起
+4. **fatal 项阻止生成**: 只有确认所有 fatal 项后才能生成最终标书
+5. **Word 文档生成成功**: 文件路径 /tmp/final_bid_117_20260512062831.docx
