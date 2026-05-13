@@ -62,6 +62,26 @@
       </el-card>
     </div>
 
+    <!-- Parse failed: retry UI -->
+    <div v-if="showRetry && !isParsing" class="mt-6">
+      <el-alert type="error" :closable="false" show-icon>
+        <template #title>
+          文件解析失败
+        </template>
+        文件无法被正常解析，可能是 PDF 损坏、密码保护或纯扫描件。<br />
+        请尝试：
+        <ul class="mt-2 mb-0 pl-5 list-disc text-sm">
+          <li>确认 PDF 未加密（可使用 Adobe Reader 另存为无加密版本）</li>
+          <li>如是扫描件，请确保扫描仪已启用文字识别（OCR）输出</li>
+          <li>使用其他 PDF 尝试排除文件问题</li>
+        </ul>
+      </el-alert>
+      <div class="mt-4 flex gap-4">
+        <el-button type="primary" @click="retryParse">重新解析</el-button>
+        <el-button @click="resetUpload">重新上传</el-button>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -81,6 +101,7 @@ const selectedFile = ref<File | null>(null)
 const isParsing = ref(false)
 const parsingProgress = ref(0)
 const isDragover = ref(false)
+const showRetry = ref(false)
 
 function handleFileChange(file: unknown) {
   const f = (file as { raw: File }).raw
@@ -198,7 +219,9 @@ async function startParsing() {
         // User cancelled
       })
     } else {
-      ElMessage.error('文件解析失败，请重试')
+      const errMsg = (err as any)?.response?.data?.detail || '文件解析失败，请重试'
+      ElMessage.error(errMsg)
+      showRetry.value = true
     }
     console.error(err)
   }
@@ -206,6 +229,17 @@ async function startParsing() {
 
 function goBack() {
   router.push('/')
+}
+
+function retryParse() {
+  showRetry.value = false
+  selectedFile.value = null
+  startParsing()
+}
+
+function resetUpload() {
+  showRetry.value = false
+  selectedFile.value = null
 }
 
 onMounted(() => {

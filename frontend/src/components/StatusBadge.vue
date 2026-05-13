@@ -25,6 +25,7 @@ const statusMap: Record<string, { type: string; effect: string; label: string }>
   completed: { type: 'success', effect: 'dark', label: '已完成' },
   terminated_by_boss: { type: 'danger', effect: 'dark', label: '已终止' },
   abandoned: { type: 'info', effect: 'plain', label: '已废弃' },
+  parse_failed: { type: 'danger', effect: 'light', label: '解析失败' },
 }
 
 const tagType = computed(() => statusMap[props.status]?.type ?? 'info')
