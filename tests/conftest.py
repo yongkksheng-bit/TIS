@@ -59,7 +59,14 @@ def engine():
                 bid_open_date TIMESTAMP,
                 status VARCHAR(50) NOT NULL DEFAULT 'uploaded',
                 relationship_flag INTEGER NOT NULL DEFAULT 0,
+                relation_identifier VARCHAR(50),
+                differentiation_guidance VARCHAR(1000),
                 generation_mode VARCHAR(20),
+                is_retender INTEGER NOT NULL DEFAULT 0,
+                parent_project_id INTEGER,
+                plan_code VARCHAR(50),
+                agency_project_code VARCHAR(100),
+                is_deleted INTEGER NOT NULL DEFAULT 0,
                 created_by INTEGER REFERENCES users(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -76,6 +83,8 @@ def engine():
                 extracted_data TEXT,
                 parsed_by_ai INTEGER NOT NULL DEFAULT 0,
                 confirmed_by_human INTEGER NOT NULL DEFAULT 0,
+                plan_code VARCHAR(50),
+                agency_project_code VARCHAR(100),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(project_id)

@@ -225,7 +225,7 @@ class DocumentOCRPipeline:
             standard_cert_id=cert_suggestion['cert_id'] if cert_suggestion else None,
             raw_text=raw_text[:2000] if raw_text else None,
             bbox_coords=field.bbox,
-            is_validated=True,  # Text-based PDF extraction is auto-confirmed
+            is_validated=False,
         )
         self.db.add(extraction)
 

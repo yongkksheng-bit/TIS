@@ -37,7 +37,9 @@ class TestDocumentOCRPipeline:
                     ],
                     image_type='business_license'
                 )
-                result = pipeline.process_pdf('/fake/path.pdf', project_id=1)
+                with patch.object(pipeline, '_extract_qualifications_from_pdf', return_value=[]):
+                    with patch.object(pipeline, '_extract_plan_codes_from_pdf', return_value=(None, None)):
+                        result = pipeline.process_pdf('/fake/path.pdf', project_id=1)
 
         assert result['status'] == 'success'
         assert result['processed_images'] == 1
@@ -72,7 +74,9 @@ class TestDocumentOCRPipeline:
                     ],
                     image_type='business_license'
                 )
-                pipeline.process_pdf('/fake/path.pdf', project_id=1)
+                with patch.object(pipeline, '_extract_qualifications_from_pdf', return_value=[]):
+                    with patch.object(pipeline, '_extract_plan_codes_from_pdf', return_value=(None, None)):
+                        pipeline.process_pdf('/fake/path.pdf', project_id=1)
 
         # Check that all ocr_extractions have is_validated=False
         extractions = session.query(OcrExtraction).all()
@@ -104,7 +108,9 @@ class TestDocumentOCRPipeline:
                     fields=[],
                     image_type='other'
                 )
-                pipeline.process_pdf('/fake/path.pdf', project_id=1)
+                with patch.object(pipeline, '_extract_qualifications_from_pdf', return_value=[]):
+                    with patch.object(pipeline, '_extract_plan_codes_from_pdf', return_value=(None, None)):
+                        pipeline.process_pdf('/fake/path.pdf', project_id=1)
 
         project = session.query(Project).get(1)
         # In test DB with raw SQL, status is stored as string
@@ -116,7 +122,8 @@ class TestDocumentOCRPipeline:
         pipeline = DocumentOCRPipeline(session)
 
         with patch.object(pipeline.image_extractor, 'extract_images', return_value=[]):
-            result = pipeline.process_pdf('/fake/path.pdf', project_id=1)
+            with patch.object(pipeline, '_process_text_pdf', return_value=(0, [], None, None)):
+                result = pipeline.process_pdf('/fake/path.pdf', project_id=1)
 
         assert result['status'] == 'success'
         assert result['processed_images'] == 0
@@ -144,7 +151,9 @@ class TestDocumentOCRPipeline:
                     ],
                     image_type='certification'
                 )
-                pipeline.process_pdf('/fake/path.pdf', project_id=1)
+                with patch.object(pipeline, '_extract_qualifications_from_pdf', return_value=[]):
+                    with patch.object(pipeline, '_extract_plan_codes_from_pdf', return_value=(None, None)):
+                        pipeline.process_pdf('/fake/path.pdf', project_id=1)
 
         extraction = session.query(OcrExtraction).filter_by(field_name='valid_until').first()
         assert extraction is not None
@@ -175,7 +184,9 @@ class TestDocumentOCRPipeline:
                     ],
                     image_type='business_license'
                 )
-                pipeline.process_pdf('/fake/path.pdf', project_id=1)
+                with patch.object(pipeline, '_extract_qualifications_from_pdf', return_value=[]):
+                    with patch.object(pipeline, '_extract_plan_codes_from_pdf', return_value=(None, None)):
+                        pipeline.process_pdf('/fake/path.pdf', project_id=1)
 
         extraction = session.query(OcrExtraction).first()
         assert raw_text_content[:2000] in extraction.raw_text
