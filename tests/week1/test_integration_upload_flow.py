@@ -9,7 +9,7 @@ import os
 @pytest.mark.integration
 def test_docker_compose_health():
     """Verify all services start via docker-compose and /health returns 200."""
-    compose_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+    compose_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
     compose_file = os.path.join(compose_dir, 'docker-compose.yml')
 
     # Bring down any existing containers
