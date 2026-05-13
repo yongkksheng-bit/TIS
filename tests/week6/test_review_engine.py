@@ -38,7 +38,14 @@ def db_engine():
                 bid_open_date TIMESTAMP,
                 status VARCHAR(50) NOT NULL DEFAULT 'uploaded',
                 relationship_flag INTEGER NOT NULL DEFAULT 0,
+                relation_identifier VARCHAR(50),
+                differentiation_guidance VARCHAR(1000),
                 generation_mode VARCHAR(20),
+                is_retender INTEGER NOT NULL DEFAULT 0,
+                parent_project_id INTEGER,
+                plan_code VARCHAR(50),
+                agency_project_code VARCHAR(100),
+                is_deleted INTEGER NOT NULL DEFAULT 0,
                 created_by INTEGER REFERENCES users(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -53,6 +60,16 @@ def db_engine():
                 chunk_metadata TEXT NOT NULL DEFAULT '{}',
                 source_project_id INTEGER REFERENCES projects(id),
                 is_deprecated INTEGER NOT NULL DEFAULT 0,
+                source_type VARCHAR(30),
+                source_id BIGINT,
+                source_label VARCHAR(255),
+                chunk_index INTEGER,
+                win_signal VARCHAR(20),
+                scoring_dimension_tags TEXT,
+                region_tags TEXT,
+                project_type_tags TEXT,
+                is_price_sensitive INTEGER NOT NULL DEFAULT 0,
+                token_count INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -107,7 +124,7 @@ def db_engine():
                 system_suggested_optimal NUMERIC(15, 2),
                 finance_suggested_price NUMERIC(15, 2),
                 finance_suggestion_reason TEXT,
-                boss_final_price NUMERIC(15, 2) NOT NULL,
+                boss_final_price NUMERIC(15, 2),
                 boss_decision_reason TEXT,
                 deviation_from_system NUMERIC(5, 4),
                 deviation_reason_category VARCHAR(50),
@@ -115,7 +132,11 @@ def db_engine():
                 is_under_limit INTEGER,
                 limit_violation_warning TEXT,
                 game_theory_analysis TEXT,
-                status VARCHAR(20) DEFAULT 'decided'
+                status VARCHAR(20) NOT NULL DEFAULT 'decided',
+                specialist_price NUMERIC(15, 2),
+                specialist_notes TEXT,
+                action_type VARCHAR(30),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
         conn.execute(text("""

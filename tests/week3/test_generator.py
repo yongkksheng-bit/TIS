@@ -56,6 +56,16 @@ def setup_project_and_chunks(db_session):
                     chunk_metadata TEXT NOT NULL DEFAULT '{}',
                     source_project_id INTEGER REFERENCES projects(id),
                     is_deprecated INTEGER DEFAULT 0,
+                    source_type VARCHAR(30),
+                    source_id BIGINT,
+                    source_label VARCHAR(255),
+                    chunk_index INTEGER,
+                    win_signal VARCHAR(20),
+                    scoring_dimension_tags TEXT,
+                    region_tags TEXT,
+                    project_type_tags TEXT,
+                    is_price_sensitive INTEGER NOT NULL DEFAULT 0,
+                    token_count INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -311,6 +321,16 @@ class TestGenerationLog:
                         chunk_metadata TEXT NOT NULL DEFAULT '{}',
                         source_project_id INTEGER,
                         is_deprecated INTEGER DEFAULT 0,
+                        source_type VARCHAR(30),
+                        source_id BIGINT,
+                        source_label VARCHAR(255),
+                        chunk_index INTEGER,
+                        win_signal VARCHAR(20),
+                        scoring_dimension_tags TEXT,
+                        region_tags TEXT,
+                        project_type_tags TEXT,
+                        is_price_sensitive INTEGER NOT NULL DEFAULT 0,
+                        token_count INTEGER,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )

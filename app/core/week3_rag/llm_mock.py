@@ -156,6 +156,7 @@ class MockDeepSeekLLM:
         insider_notes: list[str] | None = None,
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        system_prompt: str | None = None,
     ) -> MockResponse:
         """
         Generate a deterministic mock response.

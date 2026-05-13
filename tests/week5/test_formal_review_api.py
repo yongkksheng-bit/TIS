@@ -47,7 +47,14 @@ def setup_tables(conn):
             bid_open_date TIMESTAMP,
             status VARCHAR(50) NOT NULL DEFAULT 'uploaded',
             relationship_flag INTEGER NOT NULL DEFAULT 0,
+            relation_identifier VARCHAR(50),
+            differentiation_guidance VARCHAR(1000),
             generation_mode VARCHAR(20),
+            is_retender INTEGER NOT NULL DEFAULT 0,
+            parent_project_id INTEGER,
+            plan_code VARCHAR(50),
+            agency_project_code VARCHAR(100),
+            is_deleted INTEGER NOT NULL DEFAULT 0,
             created_by INTEGER REFERENCES users(id),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -86,7 +93,7 @@ def setup_tables(conn):
             system_suggested_optimal NUMERIC(15, 2),
             finance_suggested_price NUMERIC(15, 2),
             finance_suggestion_reason TEXT,
-            boss_final_price NUMERIC(15, 2) NOT NULL,
+            boss_final_price NUMERIC(15, 2),
             boss_decision_reason TEXT,
             deviation_from_system NUMERIC(5, 4),
             deviation_reason_category VARCHAR(50),
@@ -95,6 +102,9 @@ def setup_tables(conn):
             limit_violation_warning TEXT,
             game_theory_analysis TEXT,
             status VARCHAR(20) NOT NULL DEFAULT 'decided',
+            specialist_price NUMERIC(15, 2),
+            specialist_notes TEXT,
+            action_type VARCHAR(30),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """))
@@ -188,6 +198,8 @@ def setup_tables(conn):
             extracted_data TEXT,
             parsed_by_ai INTEGER NOT NULL DEFAULT 0,
             confirmed_by_human INTEGER NOT NULL DEFAULT 0,
+            plan_code VARCHAR(50),
+            agency_project_code VARCHAR(100),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(project_id)

@@ -3,7 +3,7 @@ import pytest
 import os
 from app.core.week3_rag.embedder import (
     MockEmbedder,
-    DeepSeekEmbedder,
+    AIServiceEmbedder,
     create_embedder,
     BaseEmbedder,
 )
@@ -67,11 +67,11 @@ class TestFactory:
         embedder = create_embedder()
         assert isinstance(embedder, MockEmbedder)
 
-    def test_factory_returns_deepseek_when_env_false(self, monkeypatch):
-        """Factory returns DeepSeekEmbedder when USE_MOCK_LLM=false."""
-        monkeypatch.setenv("USE_MOCK_LLM", "false")
+    def test_factory_returns_aiservice_when_env_false(self, monkeypatch):
+        """Factory returns AIServiceEmbedder when USE_MOCK_EMBEDDER=false."""
+        monkeypatch.setenv("USE_MOCK_EMBEDDER", "false")
         embedder = create_embedder()
-        assert isinstance(embedder, DeepSeekEmbedder)
+        assert isinstance(embedder, AIServiceEmbedder)
 
     def test_factory_default_is_mock(self, monkeypatch):
         """Factory defaults to MockEmbedder when env var not set."""
