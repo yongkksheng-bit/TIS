@@ -77,7 +77,7 @@ class ApprovalWorkflowService:
 
         # Check for expired time urgency - REJECT with error
         time_urgency = report.time_urgency_level.value if hasattr(report.time_urgency_level, 'value') else report.time_urgency_level
-        if action in ('submit_to_boss', 'direct_execute') and time_urgency == TimeUrgencyLevel.EXPIRED.value:
+        if action in ('submit_to_boss', 'direct_execute', 'approve', 'reject') and time_urgency == TimeUrgencyLevel.EXPIRED.value:
             raise ValueError(
                 f"Cannot approve project with time_urgency_level='expired'. "
                 f"Project {report.project_id} has expired bid deadline."
@@ -99,6 +99,14 @@ class ApprovalWorkflowService:
 
         new_generation_mode = GenerationMode.AUTO if generation_mode == 'AUTO' else GenerationMode.GUIDED
 
+        # Check for fatal risks requiring override reason when approving
+        if action == 'approve' and fatal_risks_list:
+            if not override_reason or len(override_reason) < 10:
+                raise ValueError(
+                    f"Override reason must be at least 10 characters when approving with fatal risks. "
+                    f"Got: {override_reason!r}"
+                )
+
         if action == 'submit_to_boss':
             new_status = ProjectStatus.PENDING_BOSS_APPROVAL
             action_type = ApprovalAction.SPECIALIST_WORTHY
@@ -119,6 +127,15 @@ class ApprovalWorkflowService:
                 can_be_revived=False,
             )
             self.db_session.add(discarded)
+        elif action == 'approve':
+            # Specialist approves directly → approved_by_specialist (Option-A: specialist has final authority)
+            new_status = ProjectStatus.APPROVED_BY_SPECIALIST
+            project.generation_mode = new_generation_mode
+            action_type = ApprovalAction.SPECIALIST_WORTHY
+        elif action == 'reject':
+            # Specialist rejects → rejected_by_specialist (generation_mode unchanged)
+            new_status = ProjectStatus.REJECTED_BY_SPECIALIST
+            action_type = ApprovalAction.SPECIALIST_UNWORTHY
         elif role == 'boss' and action == 'approve':
             # Boss confirms → generating_documents (relationship already set via separate call or here)
             new_status = ProjectStatus.GENERATING_DOCUMENTS
