@@ -55,95 +55,98 @@ class DocumentOCRPipeline:
             project.status = 'parsing'
             self.db.commit()
 
-        # Get or create a BidDocument for this project
-        bid_doc = self.db.query(BidDocument).filter_by(project_id=project_id).first()
-        if not bid_doc:
-            bid_doc = BidDocument(project_id=project_id, doc_type='business')
-            self.db.add(bid_doc)
-            self.db.flush()
+        try:
+            # Get or create a BidDocument for this project
+            bid_doc = self.db.query(BidDocument).filter_by(project_id=project_id).first()
+            if not bid_doc:
+                bid_doc = BidDocument(project_id=project_id, doc_type='business')
+                self.db.add(bid_doc)
+                self.db.flush()
 
-        images = self.image_extractor.extract_images(pdf_path)
-        processed_count = 0
+            images = self.image_extractor.extract_images(pdf_path)
+            processed_count = 0
 
-        for img_data in images:
-            try:
-                self._process_single_image(
-                    image_bytes=img_data.image_bytes,
-                    page_number=img_data.page_number,
-                    md5_hash=img_data.md5_hash,
-                    project_id=project_id,
-                    image_ext=img_data.image_ext,
-                    document_id=bid_doc.id,
-                )
-                processed_count += 1
-            except Exception as e:
-                logger.error(f"Failed to process image: {e}")
+            for img_data in images:
+                try:
+                    self._process_single_image(
+                        image_bytes=img_data.image_bytes,
+                        page_number=img_data.page_number,
+                        md5_hash=img_data.md5_hash,
+                        project_id=project_id,
+                        image_ext=img_data.image_ext,
+                        document_id=bid_doc.id,
+                    )
+                    processed_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to process image: {e}")
 
-        # Fallback: if no images extracted (text-based PDF), extract text directly
-        qualification_requirements = []
-        plan_code = None
-        agency_project_code = None
-        if processed_count == 0:
-            # Text-based PDF: extract text and qualifications together
-            try:
+            # Fallback: if no images extracted (text-based PDF), extract text directly
+            qualification_requirements = []
+            plan_code = None
+            agency_project_code = None
+            if processed_count == 0:
+                # Text-based PDF: extract text and qualifications together
                 processed_count, qualification_requirements, plan_code, agency_project_code = self._process_text_pdf(
                     pdf_path, project_id, bid_doc.id
                 )
-            except Exception as e:
-                logger.error(f"Failed to process text PDF: {e}")
-        else:
-            # Image-based PDF: still extract text for qualification requirements
-            # (qualifications come from the tender document text, not the OCR images)
-            try:
-                qualification_requirements = self._extract_qualifications_from_pdf(pdf_path)
-                # Also extract plan codes from full PDF text for image-based PDFs
-                plan_code, agency_project_code = self._extract_plan_codes_from_pdf(pdf_path)
-            except Exception as e:
-                logger.warning(f"Failed to extract qualifications from image PDF: {e}")
-
-        # Write plan codes directly to TenderDocument and Project
-        tender_doc = self.db.query(TenderDocument).filter_by(project_id=project_id).first()
-        if tender_doc:
-            if plan_code:
-                tender_doc.plan_code = plan_code
-            if agency_project_code:
-                tender_doc.agency_project_code = agency_project_code
-        if project:
-            if plan_code:
-                project.plan_code = plan_code
-            if agency_project_code:
-                project.agency_project_code = agency_project_code
-        self.db.commit()
-
-        # Create TenderDocument with extracted qualification requirements
-        if qualification_requirements:
-            tender_doc = self.db.query(TenderDocument).filter_by(project_id=project_id).first()
-            if not tender_doc:
-                tender_doc = TenderDocument(
-                    project_id=project_id,
-                    file_path=pdf_path,
-                    file_type='pdf',
-                    parsing_status='parsed',
-                    extracted_data={'qualification_requirements': qualification_requirements},
-                    confirmed_by_human=False,
-                    plan_code=plan_code,
-                    agency_project_code=agency_project_code,
-                )
-                self.db.add(tender_doc)
             else:
-                # Update existing tender doc with new requirements
-                existing = tender_doc.extracted_data or {}
-                existing['qualification_requirements'] = qualification_requirements
-                tender_doc.extracted_data = existing
-                tender_doc.parsing_status = 'parsed'
-            self.db.commit()
-            logger.info(f"Created TenderDocument for project {project_id} with {len(qualification_requirements)} qualification requirements")
+                # Image-based PDF: still extract text for qualification requirements
+                # (qualifications come from the tender document text, not the OCR images)
+                try:
+                    qualification_requirements = self._extract_qualifications_from_pdf(pdf_path)
+                    # Also extract plan codes from full PDF text for image-based PDFs
+                    plan_code, agency_project_code = self._extract_plan_codes_from_pdf(pdf_path)
+                except Exception as e:
+                    logger.warning(f"Failed to extract qualifications from image PDF: {e}")
 
-        if project:
-            project.status = 'parsed'
+            # Write plan codes directly to TenderDocument and Project
+            tender_doc = self.db.query(TenderDocument).filter_by(project_id=project_id).first()
+            if tender_doc:
+                if plan_code:
+                    tender_doc.plan_code = plan_code
+                if agency_project_code:
+                    tender_doc.agency_project_code = agency_project_code
+            if project:
+                if plan_code:
+                    project.plan_code = plan_code
+                if agency_project_code:
+                    project.agency_project_code = agency_project_code
             self.db.commit()
 
-        return {'processed_images': processed_count, 'status': 'success'}
+            # Create TenderDocument with extracted qualification requirements
+            if qualification_requirements:
+                tender_doc = self.db.query(TenderDocument).filter_by(project_id=project_id).first()
+                if not tender_doc:
+                    tender_doc = TenderDocument(
+                        project_id=project_id,
+                        file_path=pdf_path,
+                        file_type='pdf',
+                        parsing_status='parsed',
+                        extracted_data={'qualification_requirements': qualification_requirements},
+                        confirmed_by_human=False,
+                        plan_code=plan_code,
+                        agency_project_code=agency_project_code,
+                    )
+                    self.db.add(tender_doc)
+                else:
+                    # Update existing tender doc with new requirements
+                    existing = tender_doc.extracted_data or {}
+                    existing['qualification_requirements'] = qualification_requirements
+                    tender_doc.extracted_data = existing
+                    tender_doc.parsing_status = 'parsed'
+                self.db.commit()
+                logger.info(f"Created TenderDocument for project {project_id} with {len(qualification_requirements)} qualification requirements")
+
+            if project:
+                project.status = 'parsed'
+                self.db.commit()
+
+            return {'processed_images': processed_count, 'status': 'success'}
+        except Exception as e:
+            if project:
+                project.status = 'parse_failed'
+                self.db.commit()
+            raise
 
     def _process_single_image(
         self,
@@ -295,7 +298,7 @@ class DocumentOCRPipeline:
                     all_pages_text.append((page_num + 1, text))
 
             if not all_pages_text:
-                return 0, []
+                raise ValueError("PDF has no extractable text (possibly scanned-only or password-protected)")
 
             # Merge all text for field extraction
             full_text = "\n".join(text for _, text in all_pages_text)

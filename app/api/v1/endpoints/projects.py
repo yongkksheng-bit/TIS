@@ -425,7 +425,13 @@ async def upload_document(project_id: int, file: UploadFile = File(...), db: Ses
     db.commit()
 
     pipeline = DocumentOCRPipeline(db)
-    result = pipeline.process_pdf(str(tmp_file), project_id)
+    try:
+        result = pipeline.process_pdf(str(tmp_file), project_id)
+    except Exception as e:
+        db.rollback()
+        project.status = 'parse_failed'
+        db.commit()
+        raise HTTPException(500, f"文件解析失败：{e}")
 
     return {"file_id": project_id, "upload_status": "success", "processed_images": result['processed_images']}
 
