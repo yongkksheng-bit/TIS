@@ -448,7 +448,7 @@ async function submitToBoss() {
   try {
     // First: update relationship flag if changed
     if (specialistRelationInvolved.value) {
-      await apiClient.put(`/projects/${projectId.value}/relationship`, {
+      await apiClient.put(`/api/projects/${projectId.value}/relationship`, {
         relationship_flag: specialistRelationInvolved.value === 'yes',
         differentiation_guidance: specialistRelationInvolved.value === 'yes' ? specialistInsiderNotes.value : undefined,
       })

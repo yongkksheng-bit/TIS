@@ -206,7 +206,7 @@ async function generateSection() {
     selectedSection.value.generated = true
     // Upsert to ProjectSection (authoritative DB storage — non-blocking)
     try {
-      await apiClient.put(`/v1/projects/${projectId.value}/sections/${encodeURIComponent(selectedSection.value.title)}`, {
+      await apiClient.put(`/api/v1/projects/${projectId.value}/sections/${encodeURIComponent(selectedSection.value.title)}`, {
         section_name: selectedSection.value.title,
         content: result.data.content,
         mode: generationMode.value,

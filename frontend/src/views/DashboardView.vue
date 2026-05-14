@@ -203,7 +203,7 @@ async function handleDelete(project: Project) {
       cancelButtonText: '取消',
       type: 'warning',
     })
-    await apiClient.delete(`/projects/${project.id}`)
+    await apiClient.delete(`/api/projects/${project.id}`)
     ElMessage.success('项目已移入回收站')
     await projectStore.fetchProjects()
   } catch (err: unknown) {

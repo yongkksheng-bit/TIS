@@ -513,7 +513,7 @@ async function callUpsert(action: 'specialist_draft' | 'submit_to_boss' | 'boss_
       action_type: action,
       price: inputPrice.value,
     }
-    const resp = await apiClient.put(`/v1/projects/${projectId.value}/pricing-decisions`, payload) as any
+    const resp = await apiClient.put(`/api/v1/projects/${projectId.value}/pricing-decisions`, payload) as any
     const data = (resp as any).data || resp
 
     ElMessage.success(successMsg)

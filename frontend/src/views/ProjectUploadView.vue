@@ -121,7 +121,7 @@ async function startParsing() {
   try {
     // Step 1: Create initial project
     const createRes = await apiClient.post<{ id: number }>('/api/projects', {
-      project_name: '待解析项目',
+      project_name: selectedFile.value?.name || '待解析项目',
       owner_unit: '未知',
     })
     const projectId = (createRes as unknown as { id: number }).id
