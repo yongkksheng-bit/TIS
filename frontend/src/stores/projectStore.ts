@@ -63,7 +63,7 @@ export const useProjectStore = defineStore('project', () => {
   async function fetchTrashProjects(): Promise<void> {
     try {
       const { apiClient } = await import('@/api/client')
-      const data = await apiClient.get('/projects/trash') as TrashProject[]
+      const data = await apiClient.get('/api/projects/trash') as TrashProject[]
       trashProjects.value = data || []
     } catch (err) {
       console.error('fetchTrashProjects failed:', err)
@@ -74,7 +74,7 @@ export const useProjectStore = defineStore('project', () => {
   async function restoreProject(projectId: number): Promise<void> {
     try {
       const { apiClient } = await import('@/api/client')
-      await apiClient.post(`/projects/${projectId}/restore`)
+      await apiClient.post(`/api/projects/${projectId}/restore`)
       trashProjects.value = trashProjects.value.filter(p => p.id !== projectId)
     } catch (err) {
       console.error('restoreProject failed:', err)
@@ -85,7 +85,7 @@ export const useProjectStore = defineStore('project', () => {
   async function hardDeleteProject(projectId: number): Promise<void> {
     try {
       const { apiClient } = await import('@/api/client')
-      await apiClient.delete(`/projects/${projectId}/hard-delete`)
+      await apiClient.delete(`/api/projects/${projectId}/hard-delete`)
       trashProjects.value = trashProjects.value.filter(p => p.id !== projectId)
     } catch (err) {
       console.error('hardDeleteProject failed:', err)
@@ -96,7 +96,7 @@ export const useProjectStore = defineStore('project', () => {
   async function clearTrash(): Promise<{ cleared: unknown[]; errors: unknown[] }> {
     try {
       const { apiClient } = await import('@/api/client')
-      const result = await apiClient.post('/projects/clear-trash') as { cleared: unknown[]; errors: unknown[] }
+      const result = await apiClient.post('/api/projects/clear-trash') as { cleared: unknown[]; errors: unknown[] }
       trashProjects.value = []
       return result
     } catch (err) {
@@ -108,7 +108,7 @@ export const useProjectStore = defineStore('project', () => {
   async function fetchProjects(role?: string): Promise<void> {
     try {
       const { apiClient } = await import('@/api/client')
-      const url = role ? `/projects?role=${encodeURIComponent(role)}` : '/projects'
+      const url = role ? `/api/projects?role=${encodeURIComponent(role)}` : '/api/projects'
       const data = await apiClient.get(url) as Project[]
       if (Array.isArray(data)) {
         projects.value = data
@@ -124,7 +124,7 @@ export const useProjectStore = defineStore('project', () => {
   async function fetchProjectById(id: number): Promise<Project | null> {
     try {
       const { apiClient } = await import('@/api/client')
-      const data = await apiClient.get(`/projects/${id}`) as Project
+      const data = await apiClient.get(`/api/projects/${id}`) as Project
       // Update in-place if exists, otherwise add
       const idx = projects.value.findIndex(p => p.id === id)
       if (idx >= 0) {
