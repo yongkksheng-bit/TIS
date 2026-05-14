@@ -204,7 +204,7 @@ onMounted(async () => {
   }
   isLoadingOcr.value = true
   try {
-    const data = await apiClient.get(`/projects/${projectId.value}/confirmation-data`) as {
+    const data = await apiClient.get(`/api/projects/${projectId.value}/confirmation-data`) as {
       images: Array<{
         id: number
         fields: Array<{ fieldName: string; fieldValue: string; normalizedValue?: string }>
@@ -246,7 +246,7 @@ async function confirmAndProceed() {
   }
   isConfirming.value = true
   try {
-    await apiClient.post(`/projects/${projectId.value}/confirm-parsing`, {
+    await apiClient.post(`/api/projects/${projectId.value}/confirm-parsing`, {
       confirmations: [],
       project_name: formData.value.project_name,
       owner_unit: formData.value.owner_unit,

@@ -218,7 +218,7 @@ async function handleClone(project: Project, cloneType: 'rebid' | 'annual_renewa
   if (cloneType === 'rebid') {
     // Path A: immediate clone — same plan_code, parent_project_id bound
     try {
-      const result = await apiClient.post(`/projects/${project.id}/clone`, {
+      const result = await apiClient.post(`/api/projects/${project.id}/clone`, {
         clone_type: 'rebid',
       }) as { data: { new_project_id: number; new_project_name: string } }
       const d = (result as any).data

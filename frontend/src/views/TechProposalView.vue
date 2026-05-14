@@ -157,7 +157,7 @@ onMounted(async () => {
   }
   // Load existing generated sections from backend
   try {
-    const resp = await apiClient.get(`/v1/projects/${projectId.value}/sections`) as {
+    const resp = await apiClient.get(`/api/v1/projects/${projectId.value}/sections`) as {
       data: {
         sections: Array<{ sectionName: string; content: string; mode: string; generationTimestamp: string }>
       }
@@ -196,7 +196,7 @@ async function generateSection() {
     const insiderNotes = generationMode.value === 'guided' ? (currentProject.value?.bossInsiderNotes || '') : undefined
     // rag.py returns ResponseWrapper(data=GeneratedSectionResponse), interceptor strips Axios HTTP
     // wrapper but NOT the application-level ResponseWrapper, so result = {code:200, data:{content:"..."}}
-    const result = await apiClient.post(`/v1/projects/${projectId.value}/generate-section`, {
+    const result = await apiClient.post(`/api/v1/projects/${projectId.value}/generate-section`, {
       section_name: selectedSection.value.title,
       generation_mode: generationMode.value,
       insider_notes: insiderNotes,
@@ -239,7 +239,7 @@ async function confirmAllSections() {
     return
   }
   try {
-    await apiClient.post(`/v1/projects/${projectId.value}/advance-to-pricing`)
+    await apiClient.post(`/api/v1/projects/${projectId.value}/advance-to-pricing`)
     ElMessage.success('技术标已确认！进入定价阶段')
     await projectStore.fetchProjects()
     router.push(`/projects/${projectId.value}/pricing`)

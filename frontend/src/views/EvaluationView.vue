@@ -358,7 +358,7 @@ async function generateReport() {
   }
   isGenerating.value = true
   try {
-    const result = await apiClient.post(`/v1/projects/${projectId.value}/evaluations/generate`) as {
+    const result = await apiClient.post(`/api/v1/projects/${projectId.value}/evaluations/generate`) as {
       code: number
       message: string
       data: {
@@ -417,7 +417,7 @@ async function submitApproval() {
     const overrideReason = selectedApproval.value === 'worthy'
       ? bossInsiderNotes.value
       : terminationReason.value
-    await apiClient.post(`/v1/evaluations/${reportId.value}/approve`, {
+    await apiClient.post(`/api/v1/evaluations/${reportId.value}/approve`, {
       action,
       generation_mode: selectedMode.value.toUpperCase(),
       user_id: authStore.currentUser?.id || 1,
@@ -453,7 +453,7 @@ async function submitToBoss() {
         differentiation_guidance: specialistRelationInvolved.value === 'yes' ? specialistInsiderNotes.value : undefined,
       })
     }
-    await apiClient.post(`/v1/evaluations/${reportId.value}/approve`, {
+    await apiClient.post(`/api/v1/evaluations/${reportId.value}/approve`, {
       action: 'submit_to_boss',
       generation_mode: 'AUTO',
       user_id: authStore.currentUser?.id || 1,
@@ -474,7 +474,7 @@ async function directExecute() {
     return
   }
   try {
-    await apiClient.post(`/v1/evaluations/${reportId.value}/approve`, {
+    await apiClient.post(`/api/v1/evaluations/${reportId.value}/approve`, {
       action: 'direct_execute',
       generation_mode: 'AUTO',
       user_id: authStore.currentUser?.id || 1,
@@ -494,7 +494,7 @@ async function terminateProject() {
     return
   }
   try {
-    await apiClient.post(`/v1/evaluations/${reportId.value}/approve`, {
+    await apiClient.post(`/api/v1/evaluations/${reportId.value}/approve`, {
       action: 'terminate',
       generation_mode: 'AUTO',
       user_id: authStore.currentUser?.id || 1,

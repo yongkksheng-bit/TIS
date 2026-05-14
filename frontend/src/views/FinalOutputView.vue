@@ -73,7 +73,7 @@ const packagingChecklist = [
 async function downloadWord() {
   try {
     // Step 1: 调用生成接口，确保文档已生成并获取 docId
-    const genResp = await apiClient.post(`/v1/projects/${projectId}/final-documents/generate`) as any
+    const genResp = await apiClient.post(`/api/v1/projects/${projectId}/final-documents/generate`) as any
     const docId = genResp?.data?.id
     if (!docId) {
       ElMessage.error('生成失败：未返回文档ID')

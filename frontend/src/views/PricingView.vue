@@ -352,7 +352,7 @@ async function loadDashboard() {
     // This breaks the old deadlock: we no longer gate cost-fetch on costBase > 0.
     // The cost API will 404 when no confirmed estimate exists, which is fine.
     try {
-      const costResp = await apiClient.get(`/v1/projects/${projectId.value}/cost-estimates/current`) as any
+      const costResp = await apiClient.get(`/api/v1/projects/${projectId.value}/cost-estimates/current`) as any
       // Axios interceptor returns response.data → camelCased ResponseWrapper {code:200, data:{foodCost:10000,...}}
       // costResp = ResponseWrapper, costResp.data = inner payload object
       const payload = (costResp as any).data ?? {}
@@ -387,7 +387,7 @@ async function loadDashboard() {
     }
 
     // ── Step B: Fetch dashboard (scenarios, budget, system-optimal price) ──
-    const resp = await apiClient.get(`/v1/projects/${projectId.value}/pricing-dashboard`) as any
+    const resp = await apiClient.get(`/api/v1/projects/${projectId.value}/pricing-dashboard`) as any
     const data = (resp as any).data || resp
     budgetLimit.value = data.budget_limit ? Number(data.budget_limit) : null
     scenarios.value = data.scenarios || []
@@ -419,7 +419,7 @@ async function loadDashboard() {
 
 async function refreshScenarios() {
   try {
-    const resp = await apiClient.get(`/v1/projects/${projectId.value}/pricing-dashboard`) as any
+    const resp = await apiClient.get(`/api/v1/projects/${projectId.value}/pricing-dashboard`) as any
     const data = (resp as any).data || resp
     budgetLimit.value = data.budget_limit ? Number(data.budget_limit) : null
     scenarios.value = data.scenarios || []
@@ -466,7 +466,7 @@ async function saveAndConfirmCost() {
   savingCost.value = true
   try {
     // Step 1: Create new cost estimate version (backend auto-increments version_number)
-    const createResp = await apiClient.post(`/v1/projects/${projectId.value}/cost-estimates`, {
+    const createResp = await apiClient.post(`/api/v1/projects/${projectId.value}/cost-estimates`, {
       food_cost: foodCost.value ?? 0,
       logistics_cost: logisticsCost.value ?? 0,
       labor_cost: laborCost.value ?? 0,
@@ -479,7 +479,7 @@ async function saveAndConfirmCost() {
     if (!estimateId) throw new Error('成本估算创建失败，未返回ID')
 
     // Step 2: Confirm it immediately
-    await apiClient.post(`/v1/cost-estimates/${estimateId}/confirm`)
+    await apiClient.post(`/api/v1/cost-estimates/${estimateId}/confirm`)
 
     ElMessage.success('成本已保存并确认')
 
