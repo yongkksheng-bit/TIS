@@ -188,6 +188,15 @@ def submit_pricing_decision(
       - Deviation >5% → requires detailed reason
     """
     project = _get_project_or_404(db, project_id)
+
+    # Guard: only accept pricing in valid states
+    VALID_PRICING_STATES = {ProjectStatus.APPROVED_BY_SPECIALIST.value, ProjectStatus.AWAITING_PRICING.value}
+    if project.status not in VALID_PRICING_STATES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"无法在状态 '{project.status}' 下提交定价决策（仅在'待定价'或'专家已审批'状态下可提交）",
+        )
+
     confirmed = _get_confirmed_cost(db, project_id)
 
     if not confirmed:
@@ -255,9 +264,7 @@ def submit_pricing_decision(
         status='decided',
     )
     db.add(decision)
-    db.commit()
-
-    # Advance project to Week 5 formal review
+    # Advance project to Week 5 formal review (single atomic commit)
     project.status = ProjectStatus.AWAITING_REVIEW.value
     db.commit()
 

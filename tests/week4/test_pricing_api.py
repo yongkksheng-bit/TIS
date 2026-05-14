@@ -238,10 +238,13 @@ class TestPricingDecisionAPI:
 
         This is the Week 4 → Week 5 transition. Without this update, the project
         gets stuck in pricing phase and the formal review flow cannot begin.
+
+        Uses project_id=2 to avoid conflict with test_normal_pricing_success which
+        uses project_id=1 (both start with status='approved_by_specialist').
         """
         # Setup confirmed cost
         resp = client.post(
-            "/api/v1/projects/1/cost-estimates",
+            "/api/v1/projects/2/cost-estimates",
             json={
                 "food_cost": 800000, "logistics_cost": 200000,
                 "labor_cost": 300000, "management_cost": 150000,
@@ -252,7 +255,7 @@ class TestPricingDecisionAPI:
 
         # Submit normal pricing decision
         response = client.post(
-            "/api/v1/projects/1/pricing-decisions",
+            "/api/v1/projects/2/pricing-decisions",
             json={
                 "boss_final_price": 1500000,
                 "boss_decision_reason": "合理利润定价，确保中标后有充足现金流",
@@ -265,7 +268,7 @@ class TestPricingDecisionAPI:
         db = TestingSessionLocal()
         try:
             from app.models.project import Project
-            proj = db.query(Project).get(1)
+            proj = db.query(Project).get(2)
             assert proj is not None
             assert proj.status == "awaiting_review", (
                 f"Expected status 'awaiting_review' after pricing decision, got '{proj.status}'"
