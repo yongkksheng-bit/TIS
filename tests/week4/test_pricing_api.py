@@ -233,6 +233,46 @@ class TestPricingDecisionAPI:
         assert data["boss_final_price"] == 1500000.0
         assert data["status"] == "decided"
 
+    def test_pricing_decisionAdvancesProjectToAwaitingReview(self):
+        """After successful pricing decision, project status must advance to awaiting_review.
+
+        This is the Week 4 → Week 5 transition. Without this update, the project
+        gets stuck in pricing phase and the formal review flow cannot begin.
+        """
+        # Setup confirmed cost
+        resp = client.post(
+            "/api/v1/projects/1/cost-estimates",
+            json={
+                "food_cost": 800000, "logistics_cost": 200000,
+                "labor_cost": 300000, "management_cost": 150000,
+                "estimate_reason": "测试",
+            },
+        )
+        client.post(f"/api/v1/cost-estimates/{resp.json()['data']['id']}/confirm")
+
+        # Submit normal pricing decision
+        response = client.post(
+            "/api/v1/projects/1/pricing-decisions",
+            json={
+                "boss_final_price": 1500000,
+                "boss_decision_reason": "合理利润定价，确保中标后有充足现金流",
+            },
+        )
+        assert response.status_code == 200
+
+        # Verify project status advanced to awaiting_review via DB query
+        TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+        db = TestingSessionLocal()
+        try:
+            from app.models.project import Project
+            proj = db.query(Project).get(1)
+            assert proj is not None
+            assert proj.status == "awaiting_review", (
+                f"Expected status 'awaiting_review' after pricing decision, got '{proj.status}'"
+            )
+        finally:
+            db.close()
+
     def test_pricing_dashboard(self):
         response = client.get("/api/v1/projects/1/pricing-dashboard")
         assert response.status_code == 200

@@ -257,6 +257,10 @@ def submit_pricing_decision(
     db.add(decision)
     db.commit()
 
+    # Advance project to Week 5 formal review
+    project.status = ProjectStatus.AWAITING_REVIEW.value
+    db.commit()
+
     return ResponseWrapper(data={
         "id": decision.id,
         "project_id": project_id,
