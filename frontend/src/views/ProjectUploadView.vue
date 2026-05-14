@@ -120,7 +120,7 @@ async function startParsing() {
   let interval: ReturnType<typeof setInterval> | null = null
   try {
     // Step 1: Create initial project
-    const createRes = await apiClient.post<{ id: number }>('/projects', {
+    const createRes = await apiClient.post<{ id: number }>('/api/projects', {
       project_name: '待解析项目',
       owner_unit: '未知',
     })
@@ -134,7 +134,7 @@ async function startParsing() {
       parsingProgress.value = Math.min(parsingProgress.value + Math.floor(Math.random() * 15) + 5, 85)
     }, 300)
 
-    await apiClient.post(`/projects/${projectId}/upload`, formData, {
+    await apiClient.post(`/api/projects/${projectId}/upload`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
 
@@ -145,7 +145,7 @@ async function startParsing() {
     const pending = projectStore.pendingClone
     if (pending?.cloneType === 'annual_renewal') {
       // Fetch project to get extracted plan_code
-      const projData = await apiClient.get(`/projects/${projectId}`) as Record<string, unknown>
+      const projData = await apiClient.get(`/api/projects/${projectId}`) as Record<string, unknown>
       const planCode = (projData as any)?.plan_code || null
       // Extract year from plan_code (e.g. "441301-2025-03605" → "2025")
       let year: string | undefined
@@ -154,7 +154,7 @@ async function startParsing() {
         year = m ? m[0] : undefined
       }
       // Clone: creates new project with year suffix and new plan_code
-      const cloneRes = await apiClient.post(`/projects/${pending.sourceProjectId}/clone`, {
+      const cloneRes = await apiClient.post(`/api/projects/${pending.sourceProjectId}/clone`, {
         clone_type: 'annual_renewal',
         plan_code: planCode,
         year,
@@ -164,7 +164,7 @@ async function startParsing() {
       // Upload PDF to the cloned project
       const formDataClone = new FormData()
       formDataClone.append('file', selectedFile.value!)
-      await apiClient.post(`/projects/${clonedId}/upload`, formDataClone, {
+      await apiClient.post(`/api/projects/${clonedId}/upload`, formDataClone, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
 
@@ -199,13 +199,13 @@ async function startParsing() {
         isParsing.value = true
         try {
           // Clone via API — creates new project linked to existing one
-          const cloneRes = await apiClient.post(`/projects/${errDetail.existing_project_id}/clone`, {
+          const cloneRes = await apiClient.post(`/api/projects/${errDetail.existing_project_id}/clone`, {
             clone_type: 'rebid',
           }) as { data: { new_project_id: number; new_project_name: string } }
           const clonedId = (cloneRes as any).data.new_project_id
           const formDataRetry = new FormData()
           formDataRetry.append('file', selectedFile.value!)
-          await apiClient.post(`/projects/${clonedId}/upload`, formDataRetry, {
+          await apiClient.post(`/api/projects/${clonedId}/upload`, formDataRetry, {
             headers: { 'Content-Type': 'multipart/form-data' },
           })
           ElMessage.success('已创建流标重投项目')
