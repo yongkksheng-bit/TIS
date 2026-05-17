@@ -534,3 +534,236 @@ ALTER TABLE disqualification_traps ADD CONSTRAINT disqualification_traps_trap_ca
 1. **disqualification_type 映射不一致**: request 发送 `fatal_qualification`，response/db 显示 `fatal_formal`（可能代码中有默认值覆盖）
 2. **winning_dna = 0**: Project 117 无 confirmed TechProposalTask，无法提取 DNA
 3. **knowledge_evolution_logs = 0**: Project 117 自身无 chunks（所有 chunks 来自 historical_tenders）
+
+---
+
+## Session: 2026-05-13 代码清理 + 双轨 RAG 验证
+
+### Git 状态清理
+
+**问题：** Git 检测到 117 个文件被修改/新增，但还没 git commit
+
+**操作：**
+1. 执行 `git status --short` 查看未提交文件
+2. 分类为：
+   - 核心开发文件：需要提交
+   - 临时文件：.gitignore 中，不需要提交
+   - 废弃文件：删除并提交
+
+**清理结果：**
+| 类型 | 数量 | 操作 |
+|------|------|------|
+| 删除废弃文件 | 19 | git rm + commit |
+| 新增 docs/ | 3 | git add + commit |
+| 遗留内存文件 | 1 | git add + commit |
+| 本地配置 | 1 | 不提交 |
+| 外部缓存 | 1 | 不提交 |
+
+**废弃文件列表：**
+- Master Architecture Document.md → 移至 docs/
+- Overall Product Requirements Document (PRD).md → 移至 docs/
+- Week_01-08.md → 移至 docs/
+- scripts/deep_bid_analysis/ (整个目录)
+- scripts/simulate_deploy.sh
+- seed_db.py, update_aimemory.py
+
+### 双轨 RAG 验证
+
+**验证方法：** 在 tis_backend 容器执行 Python 脚本
+
+**验证代码：**
+```python
+from app.core.week3_rag.retriever import DocumentRetriever
+from app.core.week3_rag.embedder import create_embedder
+from app.dependencies import SessionLocal
+
+db = SessionLocal()
+embedder = create_embedder()
+retriever = DocumentRetriever(db, embedder)
+
+positive = retriever.retrieve_positive_samples(query='冷链配送', top_k=3)
+negative = retriever.retrieve_negative_samples(query='冷链配送', top_k=3)
+```
+
+**验证结果：**
+| 方法 | 返回数量 | 预期 | 状态 |
+|------|----------|------|------|
+| `retrieve_positive_samples` | 3 | > 0 | ✅ |
+| `retrieve_negative_samples` | 3 | > 0 | ✅ |
+
+**数据库 chunk 统计：**
+```sql
+SELECT win_signal, COUNT(*) FROM knowledge_chunks GROUP BY win_signal;
+-- positive: 6,140
+-- negative: 7,585
+```
+
+### 系统访问地址
+
+**本地服务：**
+| 服务 | 地址 |
+|------|------|
+| 前端 | http://localhost:3000 |
+| 后端 API | http://localhost:8000 |
+| API 文档 | http://localhost:8000/docs |
+| AI Service | http://localhost:8001 |
+| pgAdmin | http://localhost:5433 |
+| MinIO Console | http://localhost:9000 |
+
+---
+
+## Session: 2026-05-14 前端 API 路径修复 + 文件名修复
+
+### Bug 1: 前端 API 路径缺失 /api/ 前缀
+
+**根因分析：**
+- nginx `location /api/` 代理到 `http://backend:8000$request_uri`
+- 前端 axios `baseURL=""`（VITE_API_BASE_URL=""），所有 URL 为相对路径
+- Vue 组件调用 `/projects/...` 缺少 `/api/`，被 nginx `location /` 捕获返回 HTML 而非代理到 FastAPI
+- 所有 API 调用必须以 `/api/` 开头
+
+**影响范围：**
+- `projectStore.ts` — 6处（trash/restore/hard-delete/list/fetchById）
+- `ProjectUploadView.vue` — 7处（POST /projects, /upload, /restore, /clone 等）
+- `DashboardView.vue` — 1处（DELETE /projects/:id）
+- `EvaluationView.vue` — 1处（PUT /projects/:id/relationship）
+- `PricingView.vue` — 1处（PUT /v1/projects/:id/pricing-decisions）
+- `TechProposalView.vue` — 1处（PUT /v1/projects/:id/sections）
+
+**已确认无问题：**
+- `FormalReviewView.vue` — 已有 `/api/v1/` 前缀，无需修改
+
+### Bug 2: 项目名称硬编码导致重复冲突
+
+**根因：** `project_name: '待解析项目'` 硬编码，不同 PDF 上传时同名项目被后端重复检测拦截
+
+**修复：** 改为 `selectedFile.value?.name || '待解析项目'`，使用实际文件名
+
+### Bug 3: Docker 缓存导致 rebuild 失效
+
+**根因：** `docker compose build frontend` 使用旧 npm cache，未包含最新代码
+
+**修复：** 使用 `docker compose build --no-cache frontend` 强制重建
+
+### planning-with-files 插件安装
+
+**安装路径：** `~/.claude/skills/planning-with-files/`
+
+**安全检查：** 无网络外发逻辑，仅本地 JSON 文件解析
+
+### Git 推送记录
+
+| Commit | 描述 |
+|--------|------|
+| `81cb89b` | fix(frontend): add /api/ prefix to all projectStore API calls |
+| `54c28b3` | fix(frontend): add /api/ prefix to all ProjectUploadView API calls |
+| `ccfb9cd` | fix(frontend): use real filename as project_name + /api prefix |
+
+## [2026-05-15] 冒烟测试完整黄金路径验证
+
+### 执行摘要
+- **新建项目**: Project 3 (golden_path_test)
+- **12步全部通过**: ✅
+- **关键转换验证通过**: `evaluating` → `generating_documents` → `awaiting_pricing` → `awaiting_review` → `completed`
+
+### 详细执行结果
+
+| Step | 端点 | HTTP | 请求前 status | 响应 | 请求后 status | 结果 |
+|------|------|------|---------------|------|---------------|------|
+| 1 | POST /api/projects | 200 | - | id=3, status=uploaded | uploaded | ✅ |
+| 2 | POST /api/projects/3/upload | 200 | uploaded | upload_status=success | parsed | ✅ |
+| 3 | GET /api/projects/3/confirmation-data | 200 | parsed | pending_review_count=1 | parsed | ✅ |
+| 4 | POST /api/projects/3/confirm-parsing | 200 | parsed | status=confirmed, project_status=evaluating | **evaluating** | ✅ |
+| 5 | POST /api/v1/projects/3/evaluations/generate | 200 | evaluating | report_id=2, recommendation=abandon | evaluating | ✅ |
+| 6 | POST /api/v1/evaluations/2/approve | 200 | evaluating | project_status=generating_documents | **generating_documents** | ✅ |
+| 7 | POST /api/v1/projects/3/generate-section | 200 | generating_documents | content generated (2347 tokens) | generating_documents | ✅ |
+| 8 | PUT /api/v1/projects/3/sections/第一章：冷链配送方案 | 200 | generating_documents | upserted=true | generating_documents | ✅ |
+| 9 | POST /api/projects/3/advance-to-pricing | 200 | generating_documents | new_status=awaiting_pricing | **awaiting_pricing** | ✅ |
+| 10 | POST /api/v1/projects/3/pricing-decisions | 200 | awaiting_pricing | status=decided | **awaiting_review** | ✅ |
+| 11 | POST /api/v1/projects/3/checklists/init | 200 | awaiting_review | itemsCreated=10, fatalCount=0 | awaiting_review | ✅ |
+| 12 | POST /api/v1/projects/3/complete | 200 | awaiting_review | newStatus=completed | **completed** | ✅ |
+
+### 关键发现
+
+#### 1. Step 4 之后实际状态: `evaluating`
+- confirm-parsing 返回 `project_status: "evaluating"`
+- DB 确认: `status = 'evaluating'`（不是 `evaluation_ready`）
+- 这是正常行为，符合代码逻辑
+
+#### 2. Step 6 之后状态: `generating_documents`
+- 使用 `action=direct_execute` 从 specialist 审批直接进入生成阶段
+- 状态转换: `evaluating` → `generating_documents`
+
+#### 3. Step 9 advance-to-pricing 成功通过
+- **关键**: 使用 `/api/projects/3/advance-to-pricing`（正确路径）
+- 原 `pending_boss_approval` 状态无法 advance（需 `generating_documents`）
+- reset 到 evaluating 后用 direct_execute 成功进入 generating_documents
+
+#### 4. 完整12步全部用 Project 3 跑通 ✅
+- 无跳过步骤
+- 所有状态转换均通过数据库验证
+
+### API 路径发现
+
+| 端点 | 实际路径 |
+|------|----------|
+| advance-to-pricing | `/api/projects/{id}/advance-to-pricing` (projects router) |
+| pricing-decisions | `/api/v1/projects/{id}/pricing-decisions` (v1 router) |
+
+### CHECK 约束验证通过
+- formal_review_engine.py 使用 `'uncertain'`（不是 `'pending'`）
+- Step 11 创建 10 个 formal_review_items，全部成功，无 CHECK 违规
+
+### 幂等性问题记录
+- Step 6 (approve): `action=direct_execute` vs `action=submit_to_boss` 导致不同状态
+- `submit_to_boss` → `pending_boss_approval`（无法直接 advance-to-pricing）
+- `direct_execute` → `generating_documents`（可以直接 advance-to-pricing）
+
+---
+
+## [2026-05-16] Boss Approval 条件顺序修复
+
+### 问题
+- **文件**: `approval_service.py:130-145`
+- **根因**: `elif action == 'approve'` 在 `elif role == 'boss' and action == 'approve'` 之前，导致 boss 分支永远无法触发
+- **影响**: boss 审批后状态错误地变为 `approved_by_specialist` 而非 `generating_documents`
+
+### 修复
+交换条件顺序，将 `role == 'boss' and action == 'approve'` 移到 `action == 'approve'` 之前：
+
+```python
+# 修复后
+elif role == 'boss' and action == 'approve':  # 先匹配具体条件
+    new_status = GENERATING_DOCUMENTS
+elif action == 'approve':  # fallback 到 specialist
+    new_status = APPROVED_BY_SPECIALIST
+```
+
+### 验证结果（Project 5）
+
+| Step | 操作 | HTTP | 结果 |
+|------|------|------|------|
+| 6a | submit_to_boss | 200 | status=pending_boss_approval ✅ |
+| 6b | boss approve | 200 | status=**generating_documents** ✅ |
+| 7 | generate-section | 200 | content generated ✅ |
+| 8 | save section | 200 | upserted=true ✅ |
+| 9 | advance-to-pricing | 200 | status=awaiting_pricing ✅ |
+| 10 | pricing-decisions | 200 | status=decided ✅ |
+| 11 | checklists/init | 200 | itemsCreated=10 ✅ |
+| 12 | complete | 200 | status=**completed** ✅ |
+
+### 分支路径现在可用
+
+```
+evaluating
+    │
+    ├─ [direct_execute] ──→ generating_documents  ✅
+    │
+    ├─ [submit_to_boss] ──→ pending_boss_approval ──→ [boss approve] ──→ generating_documents  ✅ 修复后
+    │
+    └─ [terminate] ──→ discarded  ✅
+```
+
+---
+
+## [2026-05-15] 前端 API 路径修复 + 文件名修复

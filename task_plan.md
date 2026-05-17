@@ -480,3 +480,117 @@ ALTER TABLE formal_review_items ADD CONSTRAINT formal_review_items_system_status
 | **P1** | ~~定价博弈测试~~ | ✅ Week 4 通过 |
 | **P1** | ~~形式审查测试~~ | ✅ Week 5 通过 |
 | **P1** | ~~Evolution 测试~~ | ✅ Week 6 通过 |
+| **P1** | ~~双轨 RAG 验证~~ | ✅ Task 5 完成 |
+| **P1** | ~~源代码清理提交~~ | ✅ 117 文件已清理 |
+
+### 2026-05-13 Git 状态清理
+
+**清理结果：**
+- 删除 19 个废弃文件（-20565 行）
+- 提交 3 个新文件（docs/, AI_MEMORY.md, 遗留内存文件）
+- 剩余未提交：1 个（settings.local.json 本地配置）+ .minimax/ 外部缓存
+
+**提交记录：**
+```
+36521e1 chore: remove obsolete files and directories
+e026db8 chore: add legacy memory file
+278b124 docs: move Week docs to docs/ and update AI memory files
+```
+
+### 2026-05-13 双轨 RAG 验证
+
+**完成状态：** ✅ 通过
+
+**验证方法：** 在 tis_backend 容器执行 Python 脚本测试 `retrieve_positive_samples` 和 `retrieve_negative_samples`
+
+**验证结果：**
+| 方法 | 查询 | 返回数量 |
+|------|------|----------|
+| `retrieve_positive_samples` | '冷链配送' | 3 |
+| `retrieve_negative_samples` | '冷链配送' | 3 |
+
+**数据库状态：**
+| win_signal | chunks |
+|------------|--------|
+| positive | 6,140 |
+| negative | 7,585 |
+
+**结论：** 双轨 RAG 功能正常，pgvector 向量检索 + win_signal 过滤工作正常。
+
+### 2026-05-13 系统访问地址
+
+**本地服务地址：**
+| 服务 | 地址 | 说明 |
+|------|------|------|
+| 前端 (Vue.js) | http://localhost:3000 | Web UI 入口 |
+| 后端 API | http://localhost:8000 | FastAPI |
+| API 文档 | http://localhost:8000/docs | Swagger |
+| AI Service | http://localhost:8001 | LLM 服务 |
+| pgAdmin (DB) | http://localhost:5433 | 数据库 |
+| MinIO Console | http://localhost:9000 | 文件存储 |
+
+---
+
+## 技术债务清单
+
+### P0（已澄清）
+- ~~w013-w018 迁移完成~~ ✅
+- ~~live_fire_e2e.py 存在~~ ✅
+
+### P1（本周处理）
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| w015 字段未填充 | ⚠️ 待处理 | scoring_dimension_tags, region_tags 等为空 |
+| ai_service 未接通 | ⚠️ 已连接 | DeepSeek v4 已配置 |
+| 历史数据未注入 | ⚠️ 部分注入 | positive=6140, negative=7585 |
+
+### P2（计划中）
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| historical_chunker 908行 | ⚠️ 待优化 | 考虑拆分 |
+| run_import 810行 | ⚠️ 待优化 | 考虑拆分 |
+
+### P3（未来）
+| 项目 | 状态 | 说明 |
+|------|------|------|
+| formal_review 718行 | ⚠️ 监控 | 可接受 |
+| parser 692行 | ⚠️ 监控 | 可接受 |
+
+---
+
+## Session: 2026-05-14 前端 API 路径修复
+
+### 问题
+
+多个前端 Vue 组件中 `apiClient` 调用缺少 `/api/` 前缀，导致：
+- 请求被 nginx `location /` 捕获返回 HTML/405
+- 所有 API 调用实际未触达 FastAPI 后端
+
+### 受影响文件
+
+| 文件 | 缺失前缀数量 | 修复状态 |
+|------|------------|---------|
+| projectStore.ts | 5 | ✅ 已修复 |
+| ProjectUploadView.vue | 7 | ✅ 已修复 |
+| DashboardView.vue | 1 | ✅ 已修复 |
+| EvaluationView.vue | 1 | ✅ 已修复 |
+| PricingView.vue | 1（路径错误） | ✅ 已修复 |
+| TechProposalView.vue | 1（路径错误） | ✅ 已修复 |
+
+### 额外修复
+
+- `ProjectUploadView.vue`: `project_name: '待解析项目'` → `selectedFile.value?.name || '待解析项目'`
+  - 解决不同文件因同名被后端重复检测拦截的问题
+
+### 提交记录
+
+```
+81cb89b fix(frontend): add /api/ prefix to all projectStore API calls
+54c28b3 fix(frontend): add /api/ prefix to all ProjectUploadView API calls
+ccfb9cd fix(frontend): use real filename as project_name and add /api prefix to all remaining API calls
+```
+
+### Docker 验证
+
+- `docker compose build --no-cache frontend` — 使用 `--no-cache` 避免缓存导致旧文件
+- 编译后 JS 验证：`selectedFile.value?.name` 和 `/api/projects` 均存在于镜像中
