@@ -71,3 +71,5 @@ status.json.bak
 
 # Vue build artifacts
 *.js
+.claude/settings.local.json
+.minimax/
