@@ -127,6 +127,13 @@ class ApprovalWorkflowService:
                 can_be_revived=False,
             )
             self.db_session.add(discarded)
+        elif role == 'boss' and action == 'approve':
+            # Boss confirms → generating_documents (relationship already set via separate call or here)
+            new_status = ProjectStatus.GENERATING_DOCUMENTS
+            project.relationship_flag = relationship_flag
+            project.differentiation_guidance = differentiation_guidance
+            project.generation_mode = new_generation_mode
+            action_type = ApprovalAction.BOSS_CONFIRM_SPECIALIST
         elif action == 'approve':
             # Specialist approves directly → approved_by_specialist (Option-A: specialist has final authority)
             new_status = ProjectStatus.APPROVED_BY_SPECIALIST
@@ -136,15 +143,7 @@ class ApprovalWorkflowService:
             # Specialist rejects → rejected_by_specialist (generation_mode unchanged)
             new_status = ProjectStatus.REJECTED_BY_SPECIALIST
             action_type = ApprovalAction.SPECIALIST_UNWORTHY
-        elif role == 'boss' and action == 'approve':
-            # Boss confirms → generating_documents (relationship already set via separate call or here)
-            new_status = ProjectStatus.GENERATING_DOCUMENTS
-            project.relationship_flag = relationship_flag
-            project.differentiation_guidance = differentiation_guidance
-            project.generation_mode = new_generation_mode
-            action_type = ApprovalAction.BOSS_CONFIRM_SPECIALIST
         elif role == 'boss' and action == 'reject':
-            # Boss rejects → terminated_by_boss
             new_status = ProjectStatus.TERMINATED_BY_BOSS
             action_type = ApprovalAction.BOSS_OVERRIDE_TERMINATE
             discarded = DiscardedProject(
