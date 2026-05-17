@@ -10,7 +10,7 @@ from app.schemas.document import ProjectCreate, UploadResponse, ConfirmParsingRe
 from app.core.week1_document.parser import DocumentOCRPipeline
 from app.core.week1_document.confirmation_service import ConfirmationService
 
-router = APIRouter(prefix="/api/projects", tags=["projects"])
+router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
 logger = logging.getLogger(__name__)
 

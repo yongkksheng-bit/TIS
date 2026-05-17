@@ -52,3 +52,18 @@ app.include_router(review.router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Ensure demo user exists on startup (matches frontend authStore hardcoded id=1)."""
+    from app.core.logger import get_logger
+    from app.db.seed import seed_demo_user
+
+    logger = get_logger("startup")
+    try:
+        seed_demo_user()
+        logger.info("Demo user ensured on startup")
+    except Exception as e:
+        logger.error(f"Failed to ensure demo user: {e}")
+        # Non-blocking: log error only, don't crash startup

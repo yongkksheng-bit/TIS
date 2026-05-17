@@ -445,13 +445,13 @@ ccfb9cd fix(frontend): use real filename as project_name and add /api prefix to 
 | Path A (direct_execute) | Project 3 | ✅ 完整通过 |
 | Path B (submit_to_boss → boss_approve) | Project 5 | ✅ 完整通过 |
 
-### 已知小毛病（仅记录，不修复）
+### 已修复小毛病
 
-| 问题 | 位置 | 处理 |
-|------|------|------|
-| API路径不一致 | advance-to-pricing 使用 `/api/projects/` 而非 `/api/v1/projects/` | 记录到 findings.md |
-| 状态命名不一致 | confirm-parsing 返回 `evaluating` 而非预期 `evaluation_ready` | 记录到 findings.md |
-| authStore 硬编码 | user id=1, role='specialist' | 记录到 findings.md |
+| # | 问题 | 修复方案 | 验证结果 |
+|---|------|----------|----------|
+| 1 | API路径不一致 | `projects.router` prefix 改为 `/api/v1/projects` | `curl /api/v1/projects/3/advance-to-pricing` → 400 (not 404, path works) |
+| 2 | 状态命名不一致 | 无需修复，代码已用 `evaluating`，文档已统一 | ✅ `evaluation_ready` 在 plan 文档中不存在 |
+| 3 | authStore 硬编码 | `main.py` 添加 startup 事件调用 `seed_demo_user()` | Backend 重启后日志确认 demo user ensured |
 
 ### 开发规范（已建立）
 

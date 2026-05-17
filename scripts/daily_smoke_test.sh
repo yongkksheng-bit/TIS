@@ -195,7 +195,7 @@ fi
 
 # Step 9: 推进到定价
 log_info "Step 9: 推进到定价"
-RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/projects/$PROJECT_ID_A/advance-to-pricing" \
+RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/v1/projects/$PROJECT_ID_A/advance-to-pricing" \
     -H "Content-Type: application/json")
 
 HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE" | cut -d: -f2)
@@ -438,7 +438,7 @@ fi
 
 # Step 9: 推进到定价
 log_info "Step 9: 推进到定价"
-RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/projects/$PROJECT_ID_B/advance-to-pricing" \
+RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/v1/projects/$PROJECT_ID_B/advance-to-pricing" \
     -H "Content-Type: application/json")
 
 HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE" | cut -d: -f2)
