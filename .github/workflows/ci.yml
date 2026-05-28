@@ -7,65 +7,92 @@ on:
     branches: [master]
 
 env:
-  DATABASE_URL: postgresql://postgres:Syk0215@db:5432/canteen_system
-  REDIS_URL: redis://redis:6379/0
+  PYTHON_VERSION: '3.11'
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/canteen_system
+  REDIS_URL: redis://localhost:6379/0
 
 jobs:
-  ci:
-    name: CI
+  test:
+    name: Test Suite
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: canteen_system
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 3
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
 
-      - name: Build and start services
-        run: |
-          docker compose -f docker-compose.ci.yml up -d --build
-          echo "Waiting for services..."
-          sleep 60
-
-      - name: Wait for database
-        run: |
-          for i in $(seq 1 30); do
-            if docker compose -f docker-compose.ci.yml exec -T db pg_isready -U postgres > /dev/null 2>&1; then
-              echo "Database ready"
-              break
-            fi
-            echo "Waiting for database... ($i/30)"
-            sleep 2
-          done
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
 
       - name: Seed demo user
         run: |
-          docker compose -f docker-compose.ci.yml exec -T db psql -U postgres -d canteen_system -c "
+          PGPASSWORD=postgres psql -h localhost -U postgres -d canteen_system -c "
+            CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY);
             INSERT INTO users (id, username, email, created_at, updated_at)
             VALUES (1, 'specialist', 'specialist@tis.local', NOW(), NOW())
             ON CONFLICT (id) DO NOTHING;
           " || true
 
       - name: Run full test suite
+        run: pytest tests/ -v --tb=short --maxfail=3
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          REDIS_URL: ${{ env.REDIS_URL }}
+
+      - name: Start backend
         run: |
-          docker compose -f docker-compose.ci.yml exec -T backend pytest tests/ -v --tb=short --maxfail=3
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          echo "Waiting for backend..."
+          sleep 15
+
+      - name: Health check
+        run: curl -s http://localhost:8000/health || exit 1
 
       - name: Run Smoke Test Path A
-        run: |
-          docker compose -f docker-compose.ci.yml exec -T backend bash scripts/daily_smoke_test.sh --path-a
+        run: bash scripts/daily_smoke_test.sh --path-a
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          REDIS_URL: ${{ env.REDIS_URL }}
 
-      - name: Clean up
+      - name: Clean up projects
         run: |
-          docker compose -f docker-compose.ci.yml exec -T db psql -U postgres -d canteen_system -c "
+          PGPASSWORD=postgres psql -h localhost -U postgres -d canteen_system -c "
             DELETE FROM approval_logs WHERE project_id IN (SELECT id FROM projects WHERE project_name LIKE 'smoke_test%');
             DELETE FROM projects WHERE project_name LIKE 'smoke_test%';
           " || true
 
       - name: Run Smoke Test Path B
-        run: |
-          docker compose -f docker-compose.ci.yml exec -T backend bash scripts/daily_smoke_test.sh --path-b
-
-      - name: Cleanup
-        if: always()
-        run: docker compose -f docker-compose.ci.yml down -v || true
+        run: bash scripts/daily_smoke_test.sh --path-b
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          REDIS_URL: ${{ env.REDIS_URL }}
