@@ -3,10 +3,11 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_db
+from app.dependencies import get_db, get_current_user
 from app.models.project import Project
 from app.models.pricing import CostEstimate, PricingDecision
 from app.models.enums import ProjectStatus
+from app.core.security import User
 from app.core.week4_pricing.cost_engine import CostEstimationEngine
 from app.core.week4_pricing.game_theory import PricingGameTheoryModel
 from app.core.week4_pricing.intercept_rules import PricingInterceptRules
@@ -53,6 +54,7 @@ def create_cost_estimate(
     project_id: int,
     data: CostEstimateCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Create a new cost estimate version for a project.
@@ -85,7 +87,7 @@ def create_cost_estimate(
         management_cost=data.management_cost,
         other_cost=data.other_cost,
         total_cost=total,
-        estimated_by=1,  # TODO: from auth context
+        estimated_by=current_user.id,
         estimate_reason=data.estimate_reason,
         is_confirmed=False,
     )

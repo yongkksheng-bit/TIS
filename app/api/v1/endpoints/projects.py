@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.dependencies import get_db, get_current_user
+from app.core.security import User
 from app.models.project import Project
 from app.models.enums import ProjectStatus
 from app.schemas.document import ProjectCreate, UploadResponse, ConfirmParsingRequest
@@ -501,7 +502,12 @@ def delete_project(project_id: int, db: Session = Depends(get_db)):
     }
 
 @router.post("/{project_id}/confirm-parsing")
-def confirm_parsing(project_id: int, data: ConfirmParsingRequest, db: Session = Depends(get_db)):
+def confirm_parsing(
+    project_id: int,
+    data: ConfirmParsingRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     project = db.query(Project).get(project_id)
     if not project:
         raise HTTPException(404, "Project not found")
@@ -530,12 +536,18 @@ def confirm_parsing(project_id: int, data: ConfirmParsingRequest, db: Session = 
 
     # Handle extraction confirmations
     service = ConfirmationService(db)
-    current_user_id = 1  # placeholder
+    current_user_id = current_user.id
 
     for conf in data.confirmations:
         try:
             if conf.action == 'correct':
-                service.apply_correction(conf.extraction_id, conf.corrected_value, conf.corrected_cert_id, current_user_id, conf.notes)
+                service.apply_correction(
+                    conf.extraction_id,
+                    conf.corrected_value,
+                    conf.corrected_cert_id,
+                    current_user_id,
+                    conf.notes
+                )
             elif conf.action == 'confirm':
                 service.confirm_extraction(conf.extraction_id, current_user_id)
         except ValueError as e:
@@ -557,6 +569,7 @@ def update_relationship(
     relationship_flag: bool,
     differentiation_guidance: Optional[str],
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Update the relationship flag for a project (Week 2 specialist/boss decision).
@@ -569,8 +582,7 @@ def update_relationship(
     from app.core.week2_evaluation.approval_service import ApprovalWorkflowService
 
     service = ApprovalWorkflowService(db)
-    current_user = get_current_user()
-    user_id = current_user.get("id") if current_user else 1
+    user_id = current_user.id
 
     try:
         result = service.process_relationship_change(

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Any
+from typing import Optional, Any, Literal
 
 
 class ProjectCreate(BaseModel):
@@ -18,8 +18,17 @@ class UploadResponse(BaseModel):
     extracted_preview: Optional[dict] = None
 
 
+class ExtractionConfirmation(BaseModel):
+    """Confirmation record for a single OCR extraction field."""
+    extraction_id: int
+    action: Literal["confirm", "correct"]
+    corrected_value: Optional[str] = None
+    corrected_cert_id: Optional[int] = None
+    notes: Optional[str] = None
+
+
 class ConfirmParsingRequest(BaseModel):
-    confirmations: list[dict]  # {extraction_id, action, corrected_value?, corrected_cert_id?, notes?}
+    confirmations: list[ExtractionConfirmation]
     project_name: Optional[str] = None
     owner_unit: Optional[str] = None
     budget_amount: Optional[float] = None

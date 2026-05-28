@@ -42,18 +42,23 @@ def get_redis() -> redis.Redis:
     return redis.from_url(settings.REDIS_URL, decode_responses=True)
 
 
-# Current user dependency (placeholder for auth)
-def get_current_user() -> Optional[dict]:
-    """
-    Dependency that returns the current authenticated user.
+# Re-export security.get_current_user so existing imports remain compatible
+from app.core.security import get_current_user as _security_get_current_user, User
+from fastapi import Request
 
-    Returns None if not authenticated.
-    Actual implementation will decode JWT token from Authorization header.
 
-    Usage:
-        @app.get("/me")
-        def get_me(current_user: dict = Depends(get_current_user)):
-            ...
+def get_current_user(request: Request = None) -> User:
+    """Dependency that returns the current authenticated user.
+
+    For FastAPI Depends(): FastAPI auto-passes Request.
+    For backward compat (direct calls without args): returns None.
+
+    DEV_MODE fallback: returns user id=1 from DB (no token needed).
     """
-    # Placeholder - actual implementation will parse JWT
-    return None
+    if request is None:
+        # Backward compatibility for existing code that calls without args
+        return None
+    return _security_get_current_user(request)
+
+
+__all__ = ["get_db", "get_redis", "get_current_user"]

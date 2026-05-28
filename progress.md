@@ -467,6 +467,64 @@ ccfb9cd fix(frontend): use real filename as project_name and add /api prefix to 
 
 - `docs/superpowers/plans/2026-05-14-final-verification-plan.md` - 双路径冒烟测试计划
 - `docs/superpowers/plans/2026-05-17-daily-checkpoint-supplement.md` - 本次补充计划
+- `docs/superpowers/plans/2026-05-17-phase3-plan.md` - Phase 3 完整计划
 - `scripts/daily_smoke_test.sh` - 自动化冒烟测试脚本
 - `daily_integration_log.md` - 每日集成日志模板
 - `findings.md` - 已知问题记录
+
+---
+
+## 2026-05-17：模块A完成 — 技术债评估
+
+### 模块A完成状态
+
+| 子任务 | 状态 | 结果 |
+|--------|------|------|
+| A.1 循环依赖检查 | ✅ 完成 | 89个模块，0个问题 |
+| A.2 大文件分析 | ✅ 完成 | 仅 run_import.py 建议拆分（P2） |
+| A.3 数据层技术债 | ⚠️ 发现P0 | knowledge_chunks 表空，RAG 失效 |
+
+### P0 紧急问题：knowledge_chunks 表空
+
+- **发现时间**: 2026-05-17
+- **影响**: 双轨 RAG 检索无数据源，Week 3 技术标生成质量严重下降
+- **根因**: 可能是数据库迁移或重建时未重新导入历史数据
+- **修复计划**: 模块 B 完成后，作为独立子任务执行
+  1. 检查 run_import.py 的 chunk 导入逻辑是否正常
+  2. 重新执行历史数据导入（13,726 chunks）
+  3. 验证导入后双轨 RAG 的 positive/negative 比例
+
+### 下一步
+
+进入模块 B 用户认证系统 — B.1 后端基础设施
+
+---
+
+## 2026-05-19：B.2 JWT Middleware 紧急修正
+
+### 问题发现
+
+初始实现的 `get_current_user()` 在 DEV_MODE 无 token 时返回硬编码的 `DEMO_USER(id=999)`，与数据库真实用户 `id=1 (specialist)` 不一致。这会导致后续 B.3 替换硬编码 `user_id=1` 时 FK 约束失败。
+
+### 修正措施
+
+1. **移除 DEMO_USER 硬编码** → 改为从数据库动态查询 user id=1
+2. **添加 PyJWT 依赖** → `requirements.txt` 添加 `PyJWT>=2.8.0`
+3. **移除 xpassed 测试的 xfail 标记** → `test_embed_document_empty_content` 稳定通过
+
+### 修正后门禁状态
+
+| 验证项 | 要求 | 实际结果 |
+|--------|------|----------|
+| `pytest tests/test_get_current_user.py` | 3/3 passed | 4/4 passed ✅ |
+| `pytest tests/` | failed=0, error=0 | 465 passed, 23 xfailed, 0 failed ✅ |
+| `curl /api/v1/auth/me` | 返回 id=1 | Backend rebuild needed |
+
+### 遗留问题
+
+- **冒烟测试 Step 7 失败**：DeepSeek API SSL EOF error（外部网络问题，非代码问题）
+- **Docker backend rebuild 需要**：PyJWT 刚添加，需要 rebuild 镜像
+
+### 下一步
+
+等待 B.2 确认后进入 B.3（替换硬编码 user_id）

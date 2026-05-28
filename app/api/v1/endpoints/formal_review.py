@@ -9,7 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_db
+from app.dependencies import get_db, get_current_user
+from app.core.security import User
 from app.models.project import Project
 from app.models.enums import ProjectStatus
 from app.models.formal_review import FormalReviewItem, AbandonedDraft, FinalBidDocument
@@ -393,6 +394,7 @@ def abandon_project(
     project_id: int,
     data: dict,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Archive a project to abandoned_drafts during formal review.
@@ -402,7 +404,7 @@ def abandon_project(
     _get_project_or_404(db, project_id)
 
     reason = data.get("reason", "")
-    user_id = data.get("user_id", 1)
+    user_id = current_user.id
 
     from app.core.week5_formal_review.formal_review_engine import (
         archive_project_to_abandoned_drafts,

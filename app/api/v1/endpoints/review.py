@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func, text
 
-from app.dependencies import get_db
+from app.dependencies import get_db, get_current_user
+from app.core.security import User
 from app.models.project import Project
 from app.models.formal_review import AbandonedDraft
 from app.models.review import BidOutcome, WinningDNA, DisqualificationTrap, DraftRevival, KnowledgeEvolutionLog
@@ -192,6 +193,7 @@ def revive_draft(
     abandoned_draft_id: int,
     new_project_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Execute draft revival — revive an abandoned draft for a new project.
@@ -203,7 +205,7 @@ def revive_draft(
     engine = DraftRevivalEngine(db, abandoned_draft_id)
 
     try:
-        result = engine.revive_draft(user_id=1, reason="rebid")
+        result = engine.revive_draft(user_id=current_user.id, reason="rebid")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

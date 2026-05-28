@@ -439,7 +439,7 @@ class FormalReviewEngine:
                 'check_title': item['check_title'],
                 'check_description': item['check_description'],
                 'reference_clause': item['reference_clause'],
-                'system_status': 'pending',
+                'system_status': 'uncertain',
                 'risk_level': 'warning',
             })
 
@@ -505,7 +505,7 @@ class FormalReviewEngine:
                 'check_title': item['check_title'],
                 'check_description': item['check_description'],
                 'reference_clause': item['reference_clause'],
-                'system_status': 'pending',
+                'system_status': 'uncertain',
                 'risk_level': 'warning',
             })
 

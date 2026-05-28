@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"
     DEEPSEEK_API_KEY: Optional[str] = None
+    JWT_SECRET: str = "dev-secret-key-change-in-production"
+    DEV_MODE: bool = True
 
 
 settings = Settings()

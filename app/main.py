@@ -40,7 +40,7 @@ async def value_error_handler(request, exc):
     log.error("value_error", detail=str(exc))
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 
-from app.api.v1.endpoints import projects, documents, evaluations, rag, pricing, formal_review, review
+from app.api.v1.endpoints import projects, documents, evaluations, rag, pricing, formal_review, review, auth
 app.include_router(projects.router)
 app.include_router(documents.router)
 app.include_router(evaluations.router)
@@ -48,6 +48,7 @@ app.include_router(rag.router)
 app.include_router(pricing.router)
 app.include_router(formal_review.router)
 app.include_router(review.router)
+app.include_router(auth.router)
 
 @app.get("/health")
 def health():
