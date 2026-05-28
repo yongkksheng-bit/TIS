@@ -57,7 +57,6 @@ jobs:
       - name: Seed demo user
         run: |
           PGPASSWORD=postgres psql -h localhost -U postgres -d canteen_system -c "
-            CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY);
             INSERT INTO users (id, username, email, created_at, updated_at)
             VALUES (1, 'specialist', 'specialist@tis.local', NOW(), NOW())
             ON CONFLICT (id) DO NOTHING;
