@@ -89,26 +89,36 @@ jobs:
     name: Smoke Tests
     runs-on: ubuntu-latest
 
+    # Docker-in-Docker service
+    services:
+      docker:
+        image: docker:24.0.5-linuxkit
+        ports:
+          - 2375:2375
+        options: >
+          --privileged
+          --health-cmd="docker info"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Start Docker daemon
+      - name: Set Docker host
         run: |
-          sudo service docker start
+          echo "DOCKER_HOST=tcp://localhost:2375" >> $GITHUB_ENV
           docker info
 
       - name: Build Docker images
         run: |
           docker compose -f docker-compose.ci.yml build
 
-      - name: Start services (db + redis + minio + backend)
+      - name: Start services
         run: |
           docker compose -f docker-compose.ci.yml up -d
-          echo "Waiting for services to be healthy..."
+          echo "Waiting for services..."
           sleep 45
 
       - name: Wait for database to be ready
@@ -129,9 +139,6 @@ jobs:
       - name: Run Smoke Test Path A
         run: |
           bash scripts/daily_smoke_test.sh --path-a
-        env:
-          DATABASE_URL: postgresql://postgres:Syk0215@db:5432/canteen_system
-          REDIS_URL: redis://redis:6379/0
 
       - name: Clean up projects from Path A
         run: |
@@ -143,9 +150,6 @@ jobs:
       - name: Run Smoke Test Path B
         run: |
           bash scripts/daily_smoke_test.sh --path-b
-        env:
-          DATABASE_URL: postgresql://postgres:Syk0215@db:5432/canteen_system
-          REDIS_URL: redis://redis:6379/0
 
       - name: Cleanup
         if: always()
