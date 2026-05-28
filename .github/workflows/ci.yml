@@ -96,6 +96,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Start Docker daemon
+        run: |
+          sudo service docker start
+          docker info
+
       - name: Build Docker images
         run: |
           docker compose -f docker-compose.ci.yml build
