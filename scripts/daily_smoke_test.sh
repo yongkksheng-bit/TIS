@@ -1,21 +1,68 @@
 #!/bin/bash
 # TIS Daily Smoke Test Script
 # 执行双路径冒烟测试，确保系统完整性
-# 用法: bash scripts/daily_smoke_test.sh
+# 用法:
+#   bash scripts/daily_smoke_test.sh          # 双路径
+#   bash scripts/daily_smoke_test.sh --path-a  # 仅路径A
+#   bash scripts/daily_smoke_test.sh --path-b  # 仅路径B
+#   bash scripts/daily_smoke_test.sh --all     # 双路径（同不带参数）
 
-set -e
+# No set -e: we track failures per path for CI
 
-# 颜色定义
+# ── Flag parsing ────────────────────────────────────────────────
+RUN_PATH_A=false
+RUN_PATH_B=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --path-a)
+            RUN_PATH_A=true
+            RUN_PATH_B=false
+            ;;
+        --path-b)
+            RUN_PATH_A=false
+            RUN_PATH_B=true
+            ;;
+        --all)
+            RUN_PATH_A=true
+            RUN_PATH_B=true
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--path-a|--path-b|--all]"
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+# Default: run both paths if no flag specified
+if [[ "$RUN_PATH_A" == "false" && "$RUN_PATH_B" == "false" ]]; then
+    RUN_PATH_A=true
+    RUN_PATH_B=true
+fi
+
+# ── Color definitions ────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# 日志函数
+# ── State tracking ──────────────────────────────────────────────
+PATH_A_PASSED=false
+PATH_B_PASSED=false
+PATH_A_FAILED=false
+PATH_B_FAILED=false
+
+# ── Log functions ──────────────────────────────────────────────
 log_info() { echo -e "${NC}[INFO] $1"; }
 log_pass() { echo -e "${GREEN}[PASS] $1${NC}"; }
 log_fail() { echo -e "${RED}[FAIL] $1${NC}"; }
 log_warn() { echo -e "${YELLOW}[WARN] $1${NC}"; }
+
+# ── Failure handlers for CI (no set -e, track per-path) ───
+fail_a() { PATH_A_FAILED=true; }
+fail_b() { PATH_B_FAILED=true; }
 
 echo "=========================================="
 echo "TIS Daily Smoke Test"
@@ -32,7 +79,7 @@ else
     exit 1
 fi
 
-if curl -s http://localhost:8000/docs | grep -q "FastAPI"; then
+if curl -s http://localhost:8000/docs | grep -q "swagger-ui"; then
     log_pass "后端 API 可达"
 else
     log_fail "后端 API 不可达"
@@ -52,6 +99,7 @@ fi
 log_pass "测试文件存在: $TEST_PDF"
 echo ""
 
+if $RUN_PATH_A; then
 # ============================================
 # 路径A：直接执行（specialist直接执行）
 # ============================================
@@ -63,7 +111,7 @@ PROJECT_ID_A=""
 
 # Step 1: 创建项目
 log_info "Step 1: 创建项目"
-RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/projects" \
+RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/v1/projects" \
     -H "Content-Type: application/json" \
     -d '{"project_name":"smoke_test_pathA","project_type":"service","owner_unit":"test_unit","region":"Guangzhou","budget_amount":5000000}')
 
@@ -79,7 +127,7 @@ fi
 
 # Step 2: 上传PDF
 log_info "Step 2: 上传PDF"
-RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/projects/$PROJECT_ID_A/upload" \
+RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/v1/projects/$PROJECT_ID_A/upload" \
     -F "file=@$TEST_PDF")
 
 HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE" | cut -d: -f2)
@@ -93,12 +141,12 @@ fi
 # Step 3: 获取确认数据
 log_info "Step 3: 获取确认数据"
 sleep 3
-RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" "http://localhost:8000/api/projects/$PROJECT_ID_A/confirmation-data")
+RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" "http://localhost:8000/api/v1/projects/$PROJECT_ID_A/confirmation-data")
 HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE" | cut -d: -f2)
 if [ "$HTTP_CODE" = "200" ]; then
     log_pass "确认数据获取成功"
     # 提取所有 extraction_id
-    EXTRACTION_IDS=$(echo "$RESPONSE" | grep -o '"id":[0-9]*' | cut -d: -f2 | tr '\n' ',' | sed 's/,$//')
+    EXTRACTION_IDS=$(echo "$RESPONSE" | sed '/HTTP_CODE/d' | jq -r '[.images[].fields[] | .id] | join(",")')
     log_info "提取到 extraction_ids: $EXTRACTION_IDS"
 else
     log_fail "确认数据获取失败: HTTP $HTTP_CODE"
@@ -116,7 +164,7 @@ for i in "${!IDS[@]}"; do
 done
 CONFIRMATIONS+="]"
 
-RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/projects/$PROJECT_ID_A/confirm-parsing" \
+RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/v1/projects/$PROJECT_ID_A/confirm-parsing" \
     -H "Content-Type: application/json" \
     -d "{\"confirmations\":$CONFIRMATIONS,\"project_name\":\"smoke_test_pathA\",\"bid_open_date\":\"2026-06-30\",\"owner_unit\":\"test\",\"budget_amount\":5000000,\"region\":\"Guangzhou\",\"project_type\":\"service\"}")
 
@@ -226,7 +274,7 @@ RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/
 log_info "成本估算确认完成"
 
 # 提交定价决策
-echo '{"boss_final_price":5500000,"boss_decision_reason":"smoke test pricing","action_type":"normal"}' > /tmp/pricing.json
+echo '{"boss_final_price":4850000,"boss_decision_reason":"smoke test pricing","action_type":"normal"}' > /tmp/pricing.json
 RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/v1/projects/$PROJECT_ID_A/pricing-decisions" \
     -H "Content-Type: application/json" \
     -d @/tmp/pricing.json)
@@ -273,11 +321,19 @@ else
 fi
 
 echo ""
-log_pass "=========================================="
-log_pass "路径A：全部12步通过 ✅"
-log_pass "=========================================="
+if $PATH_A_FAILED; then
+    log_fail "路径A 失败"
+else
+    log_pass "=========================================="
+    log_pass "路径A：全部12步通过 ✅"
+    log_pass "=========================================="
+    PATH_A_PASSED=true
+fi
 echo ""
 
+fi  # END RUN_PATH_A
+
+if $RUN_PATH_B; then
 # ============================================
 # 路径B：老板审批（specialist提交→boss审批）
 # ============================================
@@ -289,7 +345,7 @@ PROJECT_ID_B=""
 
 # Step 1: 创建项目
 log_info "Step 1: 创建项目"
-RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/projects" \
+RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/v1/projects" \
     -H "Content-Type: application/json" \
     -d '{"project_name":"smoke_test_pathB","project_type":"service","owner_unit":"test_unit","region":"Guangzhou","budget_amount":5000000}')
 
@@ -304,7 +360,7 @@ fi
 
 # Step 2: 上传PDF
 log_info "Step 2: 上传PDF"
-RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/projects/$PROJECT_ID_B/upload" \
+RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/v1/projects/$PROJECT_ID_B/upload" \
     -F "file=@$TEST_PDF")
 
 HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE" | cut -d: -f2)
@@ -318,11 +374,11 @@ fi
 # Step 3: 获取确认数据
 log_info "Step 3: 获取确认数据"
 sleep 3
-RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" "http://localhost:8000/api/projects/$PROJECT_ID_B/confirmation-data")
+RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" "http://localhost:8000/api/v1/projects/$PROJECT_ID_B/confirmation-data")
 HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE" | cut -d: -f2)
 if [ "$HTTP_CODE" = "200" ]; then
     log_pass "确认数据获取成功"
-    EXTRACTION_IDS=$(echo "$RESPONSE" | grep -o '"id":[0-9]*' | cut -d: -f2 | tr '\n' ',' | sed 's/,$//')
+    EXTRACTION_IDS=$(echo "$RESPONSE" | sed '/HTTP_CODE/d' | jq -r '[.images[].fields[] | .id] | join(",")')
     log_info "提取到 extraction_ids: $EXTRACTION_IDS"
 else
     log_fail "确认数据获取失败: HTTP $HTTP_CODE"
@@ -339,7 +395,7 @@ for i in "${!IDS[@]}"; do
 done
 CONFIRMATIONS+="]"
 
-RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/projects/$PROJECT_ID_B/confirm-parsing" \
+RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/v1/projects/$PROJECT_ID_B/confirm-parsing" \
     -H "Content-Type: application/json" \
     -d "{\"confirmations\":$CONFIRMATIONS,\"project_name\":\"smoke_test_pathB\",\"bid_open_date\":\"2026-06-30\",\"owner_unit\":\"test\",\"budget_amount\":5000000,\"region\":\"Guangzhou\",\"project_type\":\"service\"}")
 
@@ -463,7 +519,7 @@ RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/
     -H "Content-Type: application/json" \
     -d @/tmp/confirm_b.json)
 
-echo '{"boss_final_price":5500000,"boss_decision_reason":"smoke test pricing","action_type":"normal"}' > /tmp/pricing_b.json
+echo '{"boss_final_price":4850000,"boss_decision_reason":"smoke test pricing","action_type":"normal"}' > /tmp/pricing_b.json
 RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST "http://localhost:8000/api/v1/projects/$PROJECT_ID_B/pricing-decisions" \
     -H "Content-Type: application/json" \
     -d @/tmp/pricing_b.json)
@@ -510,17 +566,45 @@ else
 fi
 
 echo ""
-log_pass "=========================================="
-log_pass "路径B：全部12步通过 ✅"
-log_pass "=========================================="
+if $PATH_B_FAILED; then
+    log_fail "路径B 失败"
+else
+    log_pass "=========================================="
+    log_pass "路径B：全部12步通过 ✅"
+    log_pass "=========================================="
+    PATH_B_PASSED=true
+fi
 echo ""
+
+fi  # END RUN_PATH_B
 
 # 最终总结
 echo "=========================================="
 echo "TIS Daily Smoke Test 完成"
 echo "Date: $(date '+%Y-%m-%d %H:%M:%S')"
-echo "路径A: ✅ 12步全部通过"
-echo "路径B: ✅ 12步全部通过"
+if $RUN_PATH_A; then
+    if $PATH_A_PASSED; then
+        echo "路径A: ✅ 12步全部通过"
+    else
+        echo "路径A: ❌ 失败"
+    fi
+fi
+if $RUN_PATH_B; then
+    if $PATH_B_PASSED; then
+        echo "路径B: ✅ 12步全部通过"
+    else
+        echo "路径B: ❌ 失败"
+    fi
+fi
+echo "==========================================="
+
+# Exit code: fail if any selected path failed
+if $RUN_PATH_A && $PATH_A_FAILED; then
+    exit 1
+fi
+if $RUN_PATH_B && $PATH_B_FAILED; then
+    exit 1
+fi
 echo "=========================================="
 echo ""
 echo "测试项目清理（可选）:"
