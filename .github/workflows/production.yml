@@ -2,9 +2,10 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [master, main]
+    tags:
+      - 'v*'  # Only on version tags like v1.0.0
   pull_request:
-    branches: [master, main]
+    branches: [master]
 
 # Cancel in-progress runs on same branch
 concurrency:
